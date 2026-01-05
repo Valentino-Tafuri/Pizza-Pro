@@ -49,7 +49,9 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
     initialWeight: 1, 
     yieldWeight: 1,
     category: '',
-    procedure: ''
+    procedure: '',
+    shelfLife: 0,
+    fifoLabel: false
   });
   const [wastePercentage, setWastePercentage] = useState<number>(0); // Percentuale di scarto/sfrido
   const [showAddIngredientModal, setShowAddIngredientModal] = useState(false);
@@ -537,6 +539,38 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
               value={form.procedure || ''}
               onChange={e => setForm({...form, procedure: e.target.value})}
             />
+          </div>
+        </div>
+
+        {/* Durata Conservazione e Etichetta FIFO */}
+        <div className="pt-4 border-t border-gray-50 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Durata Conservazione (giorni)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Es: 3"
+                className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+                value={form.shelfLife || ''}
+                onChange={e => setForm({...form, shelfLife: parseInt(e.target.value) || 0})}
+              />
+              <p className="text-[8px] text-gray-400 font-bold px-1">Durata del prodotto una volta messo nei contenitori di linea</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Etichetta FIFO</label>
+              <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl">
+                <span className="text-sm font-black text-black">Crea Etichetta FIFO</span>
+                <button
+                  onClick={() => setForm({...form, fifoLabel: !form.fifoLabel})}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${form.fifoLabel ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${form.fifoLabel ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
+                <span className="text-[10px] font-bold text-gray-400">{form.fifoLabel ? 'ON' : 'OFF'}</span>
+              </div>
+            </div>
           </div>
         </div>
 

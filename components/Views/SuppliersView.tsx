@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Edit2, X, Save, Truck, Phone, Mail, Package, Calendar } from 'lucide-react';
 import { Supplier } from '../../types';
+import { normalizeText } from '../../utils/textUtils';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];

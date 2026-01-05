@@ -78,6 +78,14 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (onDelete && ingredients.length > 0) {
+      for (const ingredient of ingredients) {
+        await onDelete(ingredient.id);
+      }
+    }
+  };
+
   const renderForm = () => (
     <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300">
       <div className="w-full max-w-xl bg-white rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-y-auto max-h-[95vh] pb-12 scrollbar-hide relative">
@@ -258,10 +266,11 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
         
         {showCSVPanel && (
           <div className="mt-4 animate-in slide-in-from-top duration-300">
-            <CSVImportExport
-              ingredients={ingredients}
-              suppliers={suppliers}
+            <CSVImportExport 
+              ingredients={ingredients} 
+              suppliers={suppliers} 
               onImport={handleBulkImport}
+              onDeleteAll={handleDeleteAll}
             />
           </div>
         )}

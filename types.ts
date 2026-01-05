@@ -73,6 +73,8 @@ export interface SubRecipe {
   procedure?: string;
   category: string;
   portionWeight?: number; // Peso porzione in grammi (per ricette laboratorio)
+  shelfLife?: number; // Durata del prodotto in giorni una volta messo nei contenitori di linea
+  fifoLabel?: boolean; // Flag per creare etichetta FIFO
 }
 
 export interface MenuItem {
@@ -84,4 +86,4 @@ export interface MenuItem {
   isDelivery?: boolean;
 }
 
-export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'suppliers' | 'staff' | 'assets' | 'profile';
+export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile';

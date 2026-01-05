@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Utensils, Beaker, Package, Settings, 
-  Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User, Calculator
+  Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User, Calculator,
+  Warehouse, Tag, ScanLine, ClipboardList
 } from 'lucide-react';
 import { ViewType } from '../types';
 
@@ -15,6 +16,26 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, title }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
+  const [isInventarioExpanded, setIsInventarioExpanded] = useState(false);
+
+  // Auto-expand settings menu when a sub-section is active
+  useEffect(() => {
+    if (activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers') {
+      setIsSettingsExpanded(true);
+    } else if (activeView !== 'settings') {
+      setIsSettingsExpanded(false);
+    }
+  }, [activeView]);
+
+  // Auto-expand inventario menu when a sub-section is active
+  useEffect(() => {
+    if (activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan') {
+      setIsInventarioExpanded(true);
+    } else if (activeView !== 'inventario-magazzino' && activeView !== 'inventario-etichette' && activeView !== 'inventario-scan') {
+      setIsInventarioExpanded(false);
+    }
+  }, [activeView]);
 
   const navGroups = [
     {
@@ -28,11 +49,36 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
       ]
     },
     {
-      label: 'Gestione Manageriale',
+      label: 'Inventario',
       items: [
-        { id: 'suppliers' as ViewType, label: 'Fornitori', icon: Truck },
-        { id: 'staff' as ViewType, label: 'Staff', icon: Users },
-        { id: 'assets' as ViewType, label: 'Costi e Asset', icon: BarChart3 },
+        { 
+          id: 'inventario' as ViewType, 
+          label: 'Inventario', 
+          icon: Warehouse,
+          hasSubmenu: true,
+          subItems: [
+            { id: 'inventario-magazzino' as ViewType, label: 'Magazzino', icon: Warehouse },
+            { id: 'inventario-etichette' as ViewType, label: 'Etichette', icon: Tag },
+            { id: 'inventario-scan' as ViewType, label: 'Scan', icon: ScanLine },
+          ]
+        },
+      ]
+    },
+    {
+      label: 'Impostazioni',
+      items: [
+        { 
+          id: 'settings' as ViewType, 
+          label: 'Impostazioni', 
+          icon: Settings,
+          hasSubmenu: true,
+          subItems: [
+            { id: 'settings-prefermenti' as ViewType, label: 'Prefermenti', icon: Beaker },
+            { id: 'settings-assets' as ViewType, label: 'Costi e Asset', icon: BarChart3 },
+            { id: 'settings-staff' as ViewType, label: 'Staff', icon: Users },
+            { id: 'settings-suppliers' as ViewType, label: 'Fornitori', icon: Truck },
+          ]
+        },
       ]
     }
   ];
@@ -56,26 +102,81 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
               <div className="space-y-1">
                 {group.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = activeView === item.id;
+                  const isSettingsSubActive = activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers';
+                  const isInventarioSubActive = activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan';
+                  const isActive = activeView === item.id || (item.hasSubmenu && item.id === 'settings' && isSettingsSubActive) || (item.hasSubmenu && item.id === 'inventario' && isInventarioSubActive);
+                  const isExpanded = item.hasSubmenu && (
+                    (item.id === 'settings' && (isSettingsExpanded || isSettingsSubActive)) ||
+                    (item.id === 'inventario' && (isInventarioExpanded || isInventarioSubActive))
+                  );
+                  
                   return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setActiveView(item.id);
-                        setIsSidebarOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all group ${
-                        isActive 
-                          ? 'bg-black text-white shadow-xl shadow-black/10' 
-                          : 'text-gray-400 hover:bg-gray-50 hover:text-black'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                        <span className="text-sm font-black tracking-tight">{item.label}</span>
-                      </div>
-                      {isActive && <ChevronRight size={14} className="opacity-40" />}
-                    </button>
+                    <div key={item.id}>
+                      <button
+                        onClick={() => {
+                          if (item.hasSubmenu) {
+                            if (item.id === 'settings') {
+                              setIsSettingsExpanded(!isSettingsExpanded);
+                              if (!isSettingsExpanded) {
+                                setActiveView('settings');
+                              }
+                            } else if (item.id === 'inventario') {
+                              // Inventario non apre nulla, solo espande/contrae
+                              setIsInventarioExpanded(!isInventarioExpanded);
+                            }
+                          } else {
+                            setActiveView(item.id);
+                            setIsSidebarOpen(false);
+                          }
+                        }}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all group ${
+                          isActive 
+                            ? 'bg-black text-white shadow-xl shadow-black/10' 
+                            : 'text-gray-400 hover:bg-gray-50 hover:text-black'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                          <span className="text-sm font-black tracking-tight">{item.label}</span>
+                        </div>
+                        {item.hasSubmenu ? (
+                          <ChevronRight 
+                            size={14} 
+                            className={`opacity-40 transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
+                          />
+                        ) : (
+                          isActive && <ChevronRight size={14} className="opacity-40" />
+                        )}
+                      </button>
+                      {item.hasSubmenu && isExpanded && item.subItems && (
+                        <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-100 pl-2">
+                          {item.subItems.map((subItem) => {
+                            const SubIcon = subItem.icon;
+                            const isSubActive = activeView === subItem.id;
+                            return (
+                              <button
+                                key={subItem.id}
+                                onClick={() => {
+                                  setActiveView(subItem.id);
+                                  setIsSidebarOpen(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all group ${
+                                  isSubActive 
+                                    ? 'bg-gray-900 text-white shadow-lg' 
+                                    : 'text-gray-400 hover:bg-gray-50 hover:text-black'
+                                }`}
+                              >
+                                <div className="flex items-center space-x-3">
+                                  <SubIcon size={16} strokeWidth={isSubActive ? 2.5 : 2} />
+                                  <span className="text-xs font-black tracking-tight">{subItem.label}</span>
+                                </div>
+                                {isSubActive && <ChevronRight size={12} className="opacity-40" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

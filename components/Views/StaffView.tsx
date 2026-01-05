@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Edit2, X, Save, AlertTriangle, Users, Phone, Mail, Briefcase } from 'lucide-react';
 import { Employee, Department } from '../../types';
+import { normalizeText } from '../../utils/textUtils';
 
 interface StaffViewProps {
   employees: Employee[];

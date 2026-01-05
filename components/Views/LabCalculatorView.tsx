@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Printer, Calculator, Search, Plus, X, Edit2, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Printer, Calculator, Search, Plus, X, Edit2, Trash2, AlertTriangle, Check, Settings } from 'lucide-react';
 import { Ingredient, SubRecipe, ComponentUsage, Supplier, Unit } from '../../types';
 import { normalizeText } from '../../utils/textUtils';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
+import { Preferment } from './PrefermentiView';
 
 interface LabCalculatorViewProps {
   ingredients: Ingredient[];
   subRecipes: SubRecipe[];
   suppliers: Supplier[];
+  preferments: Preferment[];
   onAdd: (sub: SubRecipe) => void;
   onUpdate?: (sub: SubRecipe) => void;
   onDelete?: (id: string) => void;
@@ -29,7 +31,7 @@ interface RecipeResult {
   totalWeight: number;
 }
 
-const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subRecipes, suppliers, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier }) => {
+const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subRecipes, suppliers, preferments, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier }) => {
   const totalFlour = 1000; // Base fissa
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,8 +96,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   // Calcolatore state
   const [hydrationTotal, setHydrationTotal] = useState(70);
   const [usePreferment, setUsePreferment] = useState(false);
-  const [prefType, setPrefType] = useState<'biga' | 'poolish'>('biga');
-  const [prefPercentage, setPrefPercentage] = useState(30);
+  const [selectedPrefermentId, setSelectedPrefermentId] = useState<string | null>(null); // ID del prefermento selezionato dalle impostazioni
+  const [prefFlourPercentage, setPrefFlourPercentage] = useState(30); // Percentuale farina da pre-fermentare (10-100%)
   // Farine per prefermento (multiple con percentuali)
   interface FlourSelectionWithPct {
     id: string;
@@ -107,8 +109,12 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   const [autolyseFlourSelections, setAutolyseFlourSelections] = useState<FlourSelectionWithPct[]>([]);
   // Farine rimanenti per chiusura impasto
   const [remainingFlourSelections, setRemainingFlourSelections] = useState<FlourSelectionWithPct[]>([]);
+  // Switch per farina di chiusura
+  const [useClosingFlour, setUseClosingFlour] = useState(false);
   const [autolyseHydration, setAutolyseHydration] = useState(60); // Idratazione autolisi
-  const [autolysePercentage, setAutolysePercentage] = useState(100); // Percentuale farina per autolisi (sulla farina rimanente)
+  const [autolyseFlourPercentage, setAutolyseFlourPercentage] = useState(30); // Percentuale farina totale da usare per autolisi (10-100%)
+  const [useSaltInAutolyse, setUseSaltInAutolyse] = useState(false); // Sale nell'autolisi
+  const [autolyseSaltPercent, setAutolyseSaltPercent] = useState(1.0); // Percentuale sale nell'autolisi (0.5% - 2%)
   const [saltPercent, setSaltPercent] = useState(2.5);
   
   // Rimuovi farine duplicate quando si attiva prefermento/autolisi
@@ -142,6 +148,27 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   // Categorie predefinite
   const categories = ['Pizza', 'Pane', 'Dolci'];
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+
+  // Calcola la percentuale totale di farina usata
+  const totalFlourUsedPercentage = useMemo(() => {
+    let total = 0;
+    
+    // Farina usata nel prefermento
+    if (usePreferment && prefFlourPercentage > 0) {
+      total += prefFlourPercentage;
+    }
+    
+    // Farina usata nell'autolisi (proporzionale al prefermento se presente)
+    if (useAutolyse && autolyseFlourPercentage > 0) {
+      // Autolisi è percentuale della farina totale
+      total += autolyseFlourPercentage;
+    }
+    
+    return total;
+  }, [usePreferment, prefFlourPercentage, useAutolyse, autolyseFlourPercentage]);
+
+  // Percentuale di farina rimanente
+  const remainingFlourPercentage = 100 - totalFlourUsedPercentage;
 
   // Trova le farine disponibili
   const availableFlours = useMemo(() => {
@@ -198,32 +225,66 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     let autolyseWater = 0;
     let mainFlour = totalFlour;
 
-    // Calcola prefermento se attivo (con multiple farine)
-    if (usePreferment && prefFlourSelections.length > 0 && prefPercentage > 0) {
-      const prefPct = prefPercentage / 100;
-      prefFlour = totalFlour * prefPct;
+    // Calcola prefermento se attivo (usando prefermento dalle impostazioni)
+    const selectedPreferment = usePreferment && selectedPrefermentId 
+      ? preferments.find(p => p.id === selectedPrefermentId)
+      : null;
+    
+    if (selectedPreferment && prefFlourPercentage > 0) {
+      // Calcola la farina totale del prefermento dalla somma delle farine selezionate
+      if (prefFlourSelections.length > 0) {
+        // Le percentuali in prefFlourSelections sono sulla percentuale del prefermento (es. 20% della farina totale)
+        // Quindi se prefFlourPercentage = 20% e inserisco 50%, significa 50% del 20% = 10% della farina totale
+        const prefFlourTotal = (totalFlour * prefFlourPercentage) / 100;
+        prefFlour = prefFlourSelections.reduce((sum, f) => {
+          return sum + (prefFlourTotal * f.percentage / 100);
+        }, 0);
+      } else {
+        // Fallback: usa prefFlourPercentage se non ci sono farine selezionate
+        const prefPct = prefFlourPercentage / 100;
+        prefFlour = totalFlour * prefPct;
+      }
       mainFlour = mainFlour - prefFlour;
 
-      if (prefType === 'biga') {
-        prefWater = prefFlour * 0.45;
-        prefYeast = prefFlour * 0.01;
-      } else {
-        prefWater = prefFlour * 1.0;
-        prefYeast = prefFlour * 0.01;
-      }
+      // Usa i parametri del prefermento selezionato
+      prefWater = prefFlour * (selectedPreferment.waterPercentage / 100);
+      prefYeast = prefFlour * (selectedPreferment.yeastPercentage / 100);
     }
 
-    // Calcola autolisi se attiva (con multiple farine, proporzionale alla percentuale del prefermento)
-    if (useAutolyse && autolyseFlourSelections.length > 0 && autolysePercentage > 0) {
-      const autolyseFlourPct = usePreferment && prefPercentage > 0 ? prefPercentage : 100;
-      autolyseFlour = (totalFlour * autolyseFlourPct * autolysePercentage) / 10000;
+    // Calcola autolisi se attiva (sulla percentuale della farina totale specificata)
+    if (useAutolyse && autolyseFlourPercentage > 0) {
+      // Calcola la farina totale dell'autolisi dalla somma delle farine selezionate
+      if (autolyseFlourSelections.length > 0) {
+        // Le percentuali in autolyseFlourSelections sono sulla percentuale dell'autolisi (es. 30% della farina totale)
+        // Quindi se autolyseFlourPercentage = 30% e inserisco 50%, significa 50% del 30% = 15% della farina totale
+        const autolyseFlourTotal = (totalFlour * autolyseFlourPercentage) / 100;
+        autolyseFlour = autolyseFlourSelections.reduce((sum, f) => {
+          return sum + (autolyseFlourTotal * f.percentage / 100);
+        }, 0);
+      } else {
+        // Fallback: usa autolyseFlourPercentage se non ci sono farine selezionate
+        autolyseFlour = (totalFlour * autolyseFlourPercentage) / 100;
+      }
       autolyseWater = (autolyseFlour * autolyseHydration) / 100;
       mainFlour = mainFlour - autolyseFlour;
     }
     
-    // Sottrai le farine rimanenti dalla farina principale
-    const remainingFlourTotal = remainingFlourSelections.reduce((sum, f) => sum + (totalFlour * f.percentage / 100), 0);
-    mainFlour = mainFlour - remainingFlourTotal;
+    // Sottrai le farine di chiusura dalla farina principale
+    let closingFlourTotal = 0;
+    if (useClosingFlour) {
+      if (!usePreferment && !useAutolyse) {
+        // Se non ci sono prefermenti/autolisi, usa flourSelections (percentuali sulla farina totale)
+        closingFlourTotal = flourSelections.reduce((sum, f) => sum + (totalFlour * f.percentage / 100), 0);
+      } else {
+        // Altrimenti usa remainingFlourSelections (percentuali sulla farina rimanente)
+        // Le percentuali sono sulla farina rimanente, quindi calcolo la percentuale effettiva sulla farina totale
+        closingFlourTotal = remainingFlourSelections.reduce((sum, f) => {
+          const actualPercentage = (remainingFlourPercentage * f.percentage) / 100;
+          return sum + (totalFlour * actualPercentage / 100);
+        }, 0);
+      }
+    }
+    mainFlour = mainFlour - closingFlourTotal;
 
     // Calcola acqua principale (escludendo prefermento e autolisi)
     const totalWaterNeeded = totalFlour * (hydrationTotal / 100);
@@ -258,7 +319,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       malt,
       totalWeight
     };
-  }, [usePreferment, prefType, prefPercentage, prefFlourSelections, useAutolyse, autolyseFlourSelections, autolyseHydration, autolysePercentage, remainingFlourSelections, hydrationTotal, saltPercent, oilPercent, yeastPercent, maltPercent, totalFlour, additionalIngredients, ingredients]);
+  }, [usePreferment, selectedPrefermentId, prefFlourPercentage, preferments, useAutolyse, autolyseFlourSelections, autolyseHydration, autolyseFlourPercentage, useSaltInAutolyse, autolyseSaltPercent, remainingFlourSelections, hydrationTotal, saltPercent, oilPercent, yeastPercent, maltPercent, totalFlour, additionalIngredients, ingredients]);
 
   const calculateCost = (ingredient: Ingredient | undefined, quantity: number): number => {
     if (!ingredient) return 0;
@@ -283,40 +344,36 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       }
     }
     
-    // Costo farina prefermento (multiple farine con percentuali)
-    if (usePreferment && prefFlourSelections.length > 0) {
-      const prefPct = prefPercentage / 100;
+    // Costo farina prefermento (usando farine selezionate)
+    // Le percentuali in prefFlourSelections sono sulla percentuale del prefermento (es. 20% della farina totale)
+    if (usePreferment && prefFlourPercentage > 0 && prefFlourSelections.length > 0) {
+      const prefFlourTotal = (totalFlour * prefFlourPercentage) / 100;
       prefFlourSelections.forEach(flourSel => {
         const flour = ingredients.find(i => i.id === flourSel.id);
         if (flour) {
-          const flourQty = (totalFlour * prefPct * flourSel.percentage) / 100;
+          // La percentuale è sulla farina del prefermento, quindi calcolo la quantità effettiva
+          const flourQty = (prefFlourTotal * flourSel.percentage) / 100;
           cost += calculateCost(flour, flourQty);
         }
       });
     }
     
-    // Costo farina autolisi (multiple farine con percentuali)
-    if (useAutolyse && autolyseFlourSelections.length > 0) {
-      const autolyseFlourPct = usePreferment && prefPercentage > 0 ? prefPercentage : 100;
+    // Costo farina autolisi (usando farine selezionate)
+    // Le percentuali in autolyseFlourSelections sono sulla percentuale dell'autolisi (es. 30% della farina totale)
+    if (useAutolyse && autolyseFlourPercentage > 0 && autolyseFlourSelections.length > 0) {
+      const autolyseFlourTotal = (totalFlour * autolyseFlourPercentage) / 100;
       autolyseFlourSelections.forEach(flourSel => {
         const flour = ingredients.find(i => i.id === flourSel.id);
         if (flour) {
-          const flourQty = (totalFlour * autolyseFlourPct * autolysePercentage * flourSel.percentage) / 1000000;
+          // La percentuale è sulla farina dell'autolisi, quindi calcolo la quantità effettiva
+          const flourQty = (autolyseFlourTotal * flourSel.percentage) / 100;
           cost += calculateCost(flour, flourQty);
         }
       });
     }
     
-    // Costo farine rimanenti per chiusura impasto
-    remainingFlourSelections.forEach(flourSel => {
-      const flour = ingredients.find(i => i.id === flourSel.id);
-      if (flour) {
-        const flourQty = (totalFlour * flourSel.percentage) / 100;
-        cost += calculateCost(flour, flourQty);
-      }
-    });
     
-    cost += calculateCost(waterIngredient, calculateRecipe.prefWater + calculateRecipe.mainWater);
+    cost += calculateCost(waterIngredient, calculateRecipe.prefWater + calculateRecipe.mainWater + (calculateRecipe.autolyseWater || 0));
     cost += calculateCost(saltIngredient, calculateRecipe.salt);
     cost += calculateCost(oilIngredient, calculateRecipe.oil);
     cost += calculateCost(yeastIngredient, calculateRecipe.prefYeast + calculateRecipe.mainYeast);
@@ -333,7 +390,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     });
     
     return cost;
-  }, [calculateRecipe, flourSelections, totalFlour, prefFlourSelections, autolyseFlourSelections, remainingFlourSelections, prefPercentage, autolysePercentage, usePreferment, useAutolyse, ingredients, waterIngredient, saltIngredient, oilIngredient, yeastIngredient, maltIngredient, additionalIngredients]);
+  }, [calculateRecipe, flourSelections, totalFlour, prefFlourSelections, autolyseFlourSelections, remainingFlourSelections, prefFlourPercentage, autolyseFlourPercentage, usePreferment, selectedPrefermentId, preferments, useAutolyse, useClosingFlour, ingredients, waterIngredient, saltIngredient, oilIngredient, yeastIngredient, maltIngredient, additionalIngredients]);
 
   const costPerKg = calculateRecipe.totalWeight > 0 ? (totalCost / (calculateRecipe.totalWeight / 1000)) : 0;
 
@@ -455,13 +512,14 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       }
     }
     
-    // Aggiungi farine prefermento (multiple con percentuali)
-    if (usePreferment && prefFlourSelections.length > 0) {
-      const prefPct = prefPercentage / 100;
+    // Aggiungi farine prefermento (sulla percentuale del prefermento)
+    if (usePreferment && prefFlourPercentage > 0 && prefFlourSelections.length > 0) {
+      const prefFlourTotal = (totalFlour * prefFlourPercentage) / 100;
       prefFlourSelections.forEach(flourSel => {
         const flour = ingredients.find(i => i.id === flourSel.id);
         if (flour) {
-          const flourQty = (totalFlour * prefPct * flourSel.percentage) / 100;
+          // La percentuale è sulla farina del prefermento, quindi calcolo la quantità effettiva
+          const flourQty = (prefFlourTotal * flourSel.percentage) / 100;
           components.push({
             id: flour.id,
             type: 'ingredient',
@@ -471,13 +529,14 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       });
     }
     
-    // Aggiungi farine autolisi (multiple con percentuali)
-    if (useAutolyse && autolyseFlourSelections.length > 0) {
-      const autolyseFlourPct = usePreferment && prefPercentage > 0 ? prefPercentage : 100;
+    // Aggiungi farine autolisi (sulla percentuale dell'autolisi)
+    if (useAutolyse && autolyseFlourPercentage > 0 && autolyseFlourSelections.length > 0) {
+      const autolyseFlourTotal = (totalFlour * autolyseFlourPercentage) / 100;
       autolyseFlourSelections.forEach(flourSel => {
         const flour = ingredients.find(i => i.id === flourSel.id);
         if (flour) {
-          const flourQty = (totalFlour * autolyseFlourPct * autolysePercentage * flourSel.percentage) / 1000000;
+          // La percentuale è sulla farina dell'autolisi, quindi calcolo la quantità effettiva
+          const flourQty = (autolyseFlourTotal * flourSel.percentage) / 100;
           components.push({
             id: flour.id,
             type: 'ingredient',
@@ -488,17 +547,38 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     }
     
     // Aggiungi farine rimanenti per chiusura impasto
-    remainingFlourSelections.forEach(flourSel => {
-      const flour = ingredients.find(i => i.id === flourSel.id);
-      if (flour) {
-        const flourQty = (totalFlour * flourSel.percentage) / 100;
-        components.push({
-          id: flour.id,
-          type: 'ingredient',
-          quantity: flourQty
+    // Aggiungi farine di chiusura
+    if (useClosingFlour) {
+      if (!usePreferment && !useAutolyse) {
+        // Se non ci sono prefermenti/autolisi, usa flourSelections (percentuali sulla farina totale)
+        flourSelections.forEach(flourSel => {
+          const flour = ingredients.find(i => i.id === flourSel.id);
+          if (flour) {
+            const flourQty = (totalFlour * flourSel.percentage) / 100;
+            components.push({
+              id: flour.id,
+              type: 'ingredient',
+              quantity: flourQty
+            });
+          }
+        });
+      } else {
+        // Altrimenti usa remainingFlourSelections (percentuali sulla farina rimanente)
+        remainingFlourSelections.forEach(flourSel => {
+          const flour = ingredients.find(i => i.id === flourSel.id);
+          if (flour) {
+            // La percentuale è sulla farina rimanente, quindi calcolo la percentuale effettiva sulla farina totale
+            const actualPercentage = (remainingFlourPercentage * flourSel.percentage) / 100;
+            const flourQty = (totalFlour * actualPercentage) / 100;
+            components.push({
+              id: flour.id,
+              type: 'ingredient',
+              quantity: flourQty
+            });
+          }
         });
       }
-    });
+    }
     
     // Acqua
     const currentWaterIng = ingredients.find(i => i.id === waterIngredient?.id || (i.name.toLowerCase().includes('acqua') || i.name.toLowerCase().includes('water')));
@@ -561,23 +641,22 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
 
     // Genera procedura
     let procedure = '';
-    if (usePreferment && prefFlourSelections.length > 0) {
-      const prefFlourNames = prefFlourSelections.map(f => {
-        const flour = ingredients.find(i => i.id === f.id);
-        return `${f.percentage}% ${flour?.name || 'farina'}`;
-      }).join(', ');
-      procedure += `Pre-fermento ${prefType === 'biga' ? 'Biga' : 'Poolish'}: ${Math.round(calculateRecipe.prefFlour)}g (${prefFlourNames}), ${Math.round(calculateRecipe.prefWater)}g acqua, ${calculateRecipe.prefYeast.toFixed(1)}g lievito. `;
+    const selectedPreferment = usePreferment && selectedPrefermentId 
+      ? preferments.find(p => p.id === selectedPrefermentId)
+      : null;
+    
+    if (selectedPreferment && prefFlourPercentage > 0) {
+      procedure += `Pre-fermento ${selectedPreferment.name} (${selectedPreferment.type === 'biga' ? 'Biga' : 'Poolish'}): ${Math.round(calculateRecipe.prefFlour)}g farina, ${Math.round(calculateRecipe.prefWater)}g acqua, ${calculateRecipe.prefYeast.toFixed(1)}g lievito. `;
     }
-    if (useAutolyse && autolyseFlourSelections.length > 0) {
-      const autFlourNames = autolyseFlourSelections.map(f => {
-        const flour = ingredients.find(i => i.id === f.id);
-        const autolyseFlourPct = usePreferment && prefPercentage > 0 ? prefPercentage : 100;
-        const flourQty = (totalFlour * autolyseFlourPct * autolysePercentage * f.percentage) / 1000000;
-        return `${Math.round(flourQty)}g ${flour?.name || 'farina'} (${f.percentage}%)`;
-      }).join(', ');
-      const autFlourQty = (totalFlour * (usePreferment && prefPercentage > 0 ? prefPercentage : 100) * autolysePercentage) / 10000;
+    if (useAutolyse && autolyseFlourPercentage > 0) {
+      const autFlourQty = (totalFlour * autolyseFlourPercentage) / 100;
       const autWaterQty = (autFlourQty * autolyseHydration) / 100;
-      procedure += `Autolisi: ${autFlourNames}, ${Math.round(autWaterQty)}g acqua (${autolyseHydration}% idratazione). `;
+      let autolisiText = `Autolisi: ${Math.round(autFlourQty)}g farina, ${Math.round(autWaterQty)}g acqua (${autolyseHydration}% idratazione)`;
+      if (useSaltInAutolyse) {
+        const autSaltQty = (totalFlour * autolyseFlourPercentage * autolyseSaltPercent) / 10000;
+        autolisiText += `, ${autSaltQty.toFixed(1)}g sale (${autolyseSaltPercent.toFixed(1)}%)`;
+      }
+      procedure += autolisiText + '. ';
     }
     procedure += `Chiusura: ${Math.round(calculateRecipe.mainFlour)}g farina, ${Math.round(calculateRecipe.mainWater)}g acqua, ${Math.round(calculateRecipe.salt)}g sale, ${Math.round(calculateRecipe.oil)}g olio, ${calculateRecipe.mainYeast.toFixed(1)}g lievito`;
     if (usePreferment && calculateRecipe.malt > 0) {
@@ -695,8 +774,18 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     setSelectedFlourId(null);
     setHydrationTotal(70);
     setUsePreferment(false);
-    setPrefType('biga');
-    setPrefPercentage(30);
+    setSelectedPrefermentId(null);
+    setPrefFlourPercentage(30);
+    setPrefFlourSelections([]);
+    setUseAutolyse(false);
+    setAutolyseFlourSelections([]);
+    setAutolyseHydration(60);
+    setAutolyseFlourPercentage(30);
+    setUseSaltInAutolyse(false);
+    setAutolyseSaltPercent(1.0);
+    setRemainingFlourSelections([]);
+    setFlourSelections([]);
+    setAdditionalIngredients([]);
     setSaltPercent(2.5);
     setOilPercent(2);
     setYeastPercent(0.7);
@@ -1030,111 +1119,145 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
         <div className="space-y-6">
           {/* 1. Pre-fermento */}
           <div>
-            <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
-              1. Pre-fermento
-            </h4>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                <input 
-                  type="checkbox" 
-                  id="usePreferment"
-                  checked={usePreferment}
-                  onChange={(e) => setUsePreferment(e.target.checked)}
-                  className="w-5 h-5 accent-black cursor-pointer"
-                />
-                <label htmlFor="usePreferment" className="text-sm font-black text-black uppercase tracking-widest cursor-pointer flex-1">
-                  Utilizza Pre-fermento
-                </label>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-4 mb-4">Pre-fermento</h3>
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 space-y-6">
+              <div className="flex justify-between items-center px-1">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-black text-black uppercase tracking-widest">Pre-fermento</span>
+                  <button
+                    onClick={() => setUsePreferment(!usePreferment)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${usePreferment ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${usePreferment ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                  <span className="text-[10px] font-bold text-gray-400">{usePreferment ? 'ON' : 'OFF'}</span>
+                </div>
               </div>
 
               {usePreferment && (
-                <div className="space-y-4 pl-4 border-l-2 border-gray-200">
-                  <div>
-                    <label className="block text-sm font-black text-black mb-2">Tipologia</label>
-                    <div className="flex gap-4">
+                <div className="space-y-6 pt-4 border-t border-gray-50">
+                  {preferments.length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6 text-center">
+                      <AlertTriangle size={24} className="text-yellow-600 mx-auto mb-2" />
+                      <p className="text-sm font-black text-yellow-800 mb-2">Nessun prefermento configurato</p>
+                      <p className="text-xs text-yellow-600 mb-4">Vai in Impostazioni → Prefermenti per crearne uno</p>
                       <button
-                        onClick={() => setPrefType('biga')}
-                        className={`flex-1 py-3 rounded-xl font-bold transition-all ${prefType === 'biga' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
+                        onClick={() => window.location.hash = '#settings-prefermenti'}
+                        className="bg-yellow-600 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center space-x-2 mx-auto"
                       >
-                        Biga (45% Idro, 1% Lievito)
-                      </button>
-                      <button
-                        onClick={() => setPrefType('poolish')}
-                        className={`flex-1 py-3 rounded-xl font-bold transition-all ${prefType === 'poolish' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
-                      >
-                        Poolish (100% Idro, 1% Lievito)
+                        <Settings size={16} />
+                        <span>Vai alle Impostazioni</span>
                       </button>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-black text-black mb-2">Farine per Pre-fermento</label>
-                    <div className="space-y-2">
-                      {prefFlourSelections.map((flourSel, idx) => {
-                        const flour = ingredients.find(i => i.id === flourSel.id);
-                        return (
-                          <div key={idx} className="bg-white p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
-                            <div className="flex-1">
-                              <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
-                              <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
-                            </div>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={flourSel.percentage}
-                              onChange={(e) => {
-                                const newSelections = [...prefFlourSelections];
-                                newSelections[idx].percentage = parseInt(e.target.value) || 0;
-                                setPrefFlourSelections(newSelections);
-                              }}
-                              className="w-20 bg-gray-50 border-none rounded-xl p-2 text-sm font-bold text-center"
-                            />
-                            <span className="text-xs font-black text-gray-400">%</span>
-                            <button
-                              onClick={() => setPrefFlourSelections(prefFlourSelections.filter((_, i) => i !== idx))}
-                              className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                      <button
-                        onClick={() => setShowFlourSelectModal('preferment')}
-                        className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-left flex items-center justify-between hover:bg-gray-100 transition-colors"
-                      >
-                        <span className="text-gray-400">Aggiungi farina...</span>
-                        <Plus size={18} className="text-gray-400" />
-                      </button>
-                      {prefFlourSelections.length > 0 && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-400 font-bold">Totale:</span>
-                          <span className={`font-black ${prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0) === 100 ? 'text-green-600' : 'text-red-600'}`}>
-                            {prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0)}%
-                          </span>
+                  ) : (
+                    <>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center px-1">
+                          <span className="text-xs font-black text-black uppercase tracking-widest">Seleziona Prefermento</span>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                        <select
+                          value={selectedPrefermentId || ''}
+                          onChange={(e) => setSelectedPrefermentId(e.target.value || null)}
+                          className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+                        >
+                          <option value="">Seleziona un prefermento...</option>
+                          {preferments.map(pref => (
+                            <option key={pref.id} value={pref.id}>
+                              {pref.name} ({pref.type === 'biga' ? 'Biga' : 'Poolish'}) - {pref.waterPercentage}% idro, {pref.yeastPercentage}% lievito
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="block text-sm font-black text-black mb-2">Percentuale Pre-fermento (%)</label>
-                    <div className="flex items-center gap-4">
-                      <input 
-                        type="range" 
-                        min="10" 
-                        max="100" 
-                        step="5" 
-                        value={prefPercentage}
-                        onChange={(e) => setPrefPercentage(parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-100 rounded-full appearance-none accent-black"
-                      />
-                      <span className="text-lg font-black text-black min-w-[60px] text-right">{prefPercentage}%</span>
-                    </div>
-                  </div>
+                      {selectedPrefermentId && (
+                        <>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center px-1">
+                              <span className="text-xs font-black text-black uppercase tracking-widest">Farina da Pre-fermentare</span>
+                              <span className="text-xs font-black bg-gray-50 px-4 py-2 rounded-2xl">{prefFlourPercentage}%</span>
+                            </div>
+                            <input 
+                              type="range" min="10" max="100" step="1"
+                              className="w-full h-2 bg-gray-100 rounded-full appearance-none cursor-pointer accent-orange-500"
+                              value={prefFlourPercentage}
+                              onChange={e => setPrefFlourPercentage(parseInt(e.target.value))}
+                            />
+                            <div className="flex justify-between mt-2 text-xs text-gray-400 font-bold">
+                              <span>10%</span>
+                              <span>100%</span>
+                            </div>
+                          </div>
+
+                          {/* Selettore Farine per Prefermento */}
+                          <div className="space-y-4 pt-4 border-t border-gray-50">
+                            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                              <p className="text-sm font-black text-blue-800 mb-1">Farine per Prefermento</p>
+                              <p className="text-xs text-blue-600">
+                                Le percentuali inserite sono sulla farina del prefermento ({prefFlourPercentage}% della farina totale = {Math.round((1000 * prefFlourPercentage) / 100)}g)
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              {prefFlourSelections.map((flourSel, idx) => {
+                                const flour = ingredients.find(i => i.id === flourSel.id);
+                                const totalPercentage = prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                                const remainingPercentage = prefFlourPercentage - (totalPercentage - flourSel.percentage);
+                                // La percentuale inserita rappresenta direttamente la percentuale della farina totale
+                                // Quindi se inserisce 20%, significa 20% della farina totale (non 20% del prefermento)
+                                const actualPercentage = flourSel.percentage;
+                                return (
+                                  <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
+                                    <div className="flex-1">
+                                      <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
+                                      <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
+                                    </div>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={remainingPercentage}
+                                      step="1"
+                                      value={flourSel.percentage}
+                                      onChange={(e) => {
+                                        const newSelections = [...prefFlourSelections];
+                                        const newValue = Math.min(remainingPercentage, Math.max(0, parseInt(e.target.value) || 0));
+                                        newSelections[idx].percentage = newValue;
+                                        setPrefFlourSelections(newSelections);
+                                      }}
+                                      className="w-20 bg-white border-none rounded-xl p-2 text-sm font-bold text-center"
+                                    />
+                                    <span className="text-xs font-black text-gray-400">%</span>
+                                    <div className="text-[10px] text-gray-500 font-bold min-w-[60px] text-right">
+                                      = {actualPercentage.toFixed(1)}%
+                                    </div>
+                                    <button
+                                      onClick={() => setPrefFlourSelections(prefFlourSelections.filter((_, i) => i !== idx))}
+                                      className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                              <button
+                                onClick={() => setShowFlourSelectModal('preferment')}
+                                className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-left flex items-center justify-between hover:bg-gray-100 transition-colors"
+                              >
+                                <span className="text-gray-400">Aggiungi farina...</span>
+                                <Plus size={18} className="text-gray-400" />
+                              </button>
+                              {prefFlourSelections.length > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-400 font-bold">Totale:</span>
+                                  <span className={`font-black ${Math.abs(prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0) - prefFlourPercentage) < 0.1 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0).toFixed(1)}% / {prefFlourPercentage}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1142,33 +1265,56 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
 
           {/* 2. Autolisi */}
           <div>
-            <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
-              2. Autolisi
-            </h4>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                <input 
-                  type="checkbox" 
-                  id="useAutolyse"
-                  checked={useAutolyse}
-                  onChange={(e) => setUseAutolyse(e.target.checked)}
-                  className="w-5 h-5 accent-black cursor-pointer"
-                />
-                <label htmlFor="useAutolyse" className="text-sm font-black text-black uppercase tracking-widest cursor-pointer flex-1">
-                  Utilizza Autolisi
-                </label>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-4 mb-4">Autolisi</h3>
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 space-y-6">
+              <div className="flex justify-between items-center px-1">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-black text-black uppercase tracking-widest">Autolisi</span>
+                  <button
+                    onClick={() => setUseAutolyse(!useAutolyse)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${useAutolyse ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${useAutolyse ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                  <span className="text-[10px] font-bold text-gray-400">{useAutolyse ? 'ON' : 'OFF'}</span>
+                </div>
               </div>
 
               {useAutolyse && (
-                <div className="space-y-4 pl-4 border-l-2 border-gray-200">
-                  <div>
-                    <label className="block text-sm font-black text-black mb-2">Farine per Autolisi</label>
+                <div className="space-y-6 pt-4 border-t border-gray-50">
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center px-1">
+                      <span className="text-xs font-black text-black uppercase tracking-widest">Farina da Autolisi</span>
+                      <span className="text-xs font-black bg-gray-50 px-4 py-2 rounded-2xl">{autolyseFlourPercentage}%</span>
+                    </div>
+                    <input 
+                      type="range" min="10" max="100" step="1"
+                      className="w-full h-2 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-500"
+                      value={autolyseFlourPercentage}
+                      onChange={e => setAutolyseFlourPercentage(parseInt(e.target.value))}
+                    />
+                    <div className="flex justify-between mt-2 text-xs text-gray-400 font-bold">
+                      <span>10%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+
+                  {/* Selettore Farine per Autolisi */}
+                  <div className="space-y-4 pt-4 border-t border-gray-50">
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                      <p className="text-sm font-black text-blue-800 mb-1">Farine per Autolisi</p>
+                      <p className="text-xs text-blue-600">
+                        Le percentuali inserite sono sulla farina dell'autolisi ({autolyseFlourPercentage}% della farina totale = {Math.round((1000 * autolyseFlourPercentage) / 100)}g)
+                      </p>
+                    </div>
                     <div className="space-y-2">
                       {autolyseFlourSelections.map((flourSel, idx) => {
                         const flour = ingredients.find(i => i.id === flourSel.id);
+                        const totalPercentage = autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                        const remainingPercentage = autolyseFlourPercentage - (totalPercentage - flourSel.percentage);
+                        const actualPercentage = (autolyseFlourPercentage * flourSel.percentage) / 100;
                         return (
-                          <div key={idx} className="bg-white p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
+                          <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
                             <div className="flex-1">
                               <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
                               <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
@@ -1176,17 +1322,21 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                             <input
                               type="number"
                               min="0"
-                              max="100"
+                              max={remainingPercentage}
                               step="1"
                               value={flourSel.percentage}
                               onChange={(e) => {
                                 const newSelections = [...autolyseFlourSelections];
-                                newSelections[idx].percentage = parseInt(e.target.value) || 0;
+                                const newValue = Math.min(remainingPercentage, Math.max(0, parseInt(e.target.value) || 0));
+                                newSelections[idx].percentage = newValue;
                                 setAutolyseFlourSelections(newSelections);
                               }}
-                              className="w-20 bg-gray-50 border-none rounded-xl p-2 text-sm font-bold text-center"
+                              className="w-20 bg-white border-none rounded-xl p-2 text-sm font-bold text-center"
                             />
                             <span className="text-xs font-black text-gray-400">%</span>
+                            <div className="text-[10px] text-gray-500 font-bold min-w-[60px] text-right">
+                              = {actualPercentage.toFixed(1)}%
+                            </div>
                             <button
                               onClick={() => setAutolyseFlourSelections(autolyseFlourSelections.filter((_, i) => i !== idx))}
                               className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
@@ -1206,229 +1356,359 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                       {autolyseFlourSelections.length > 0 && (
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-gray-400 font-bold">Totale:</span>
-                          <span className={`font-black ${autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0) === 100 ? 'text-green-600' : 'text-red-600'}`}>
-                            {autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0)}%
+                          <span className={`font-black ${Math.abs(autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0) - autolyseFlourPercentage) < 0.1 ? 'text-green-600' : 'text-red-600'}`}>
+                            {autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0).toFixed(1)}% / {autolyseFlourPercentage}%
                           </span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-black text-black mb-2">Percentuale Farina Autolisi (%)</label>
-                    <div className="flex items-center gap-4">
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        step="5" 
-                        value={autolysePercentage}
-                        onChange={(e) => setAutolysePercentage(parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-100 rounded-full appearance-none accent-black"
-                      />
-                      <span className="text-lg font-black text-black min-w-[60px] text-right">{autolysePercentage}%</span>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center px-1">
+                      <span className="text-xs font-black text-black uppercase tracking-widest">Idratazione Autolisi (%)</span>
+                      <span className="text-xs font-black bg-gray-50 px-4 py-2 rounded-2xl">{autolyseHydration}%</span>
                     </div>
-                    <p className="text-xs text-gray-400 font-bold mt-1">
-                      {usePreferment && prefPercentage > 0 
-                        ? `Proporzionale alla farina del prefermento (${prefPercentage}% della farina totale)`
-                        : 'Calcolata sulla farina totale'}
-                    </p>
+                    <input 
+                      type="range" min="50" max="100" step="1"
+                      className="w-full h-2 bg-gray-100 rounded-full appearance-none cursor-pointer accent-red-500"
+                      value={autolyseHydration}
+                      onChange={e => setAutolyseHydration(parseInt(e.target.value))}
+                    />
+                    <div className="flex justify-between mt-2 text-xs text-gray-400 font-bold">
+                      <span>50%</span>
+                      <span>100%</span>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-black text-black mb-2">Idratazione Autolisi (%)</label>
-                    <div className="flex items-center gap-4">
-                      <input 
-                        type="range" 
-                        min="50" 
-                        max="100" 
-                        step="5" 
-                        value={autolyseHydration}
-                        onChange={(e) => setAutolyseHydration(parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-100 rounded-full appearance-none accent-black"
-                      />
-                      <span className="text-lg font-black text-black min-w-[60px] text-right">{autolyseHydration}%</span>
+                  <div className="pt-4 border-t border-gray-50">
+                    <div className="flex justify-between items-center px-1">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xs font-black text-black uppercase tracking-widest">Sale nell'Autolisi</span>
+                        <button
+                          onClick={() => setUseSaltInAutolyse(!useSaltInAutolyse)}
+                          className={`relative w-12 h-6 rounded-full transition-colors ${useSaltInAutolyse ? 'bg-green-500' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${useSaltInAutolyse ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
+                        <span className="text-[10px] font-bold text-gray-400">{useSaltInAutolyse ? 'ON' : 'OFF'}</span>
+                      </div>
                     </div>
+                    {useSaltInAutolyse && (
+                      <div className="mt-4 space-y-4">
+                        <div className="flex justify-between items-center px-1">
+                          <span className="text-xs font-black text-black uppercase tracking-widest">Sale Autolisi (%)</span>
+                          <span className="text-xs font-black bg-gray-50 px-4 py-2 rounded-2xl">{autolyseSaltPercent.toFixed(1)}%</span>
+                        </div>
+                        <input 
+                          type="range" min="0.5" max="2" step="0.1"
+                          className="w-full h-2 bg-gray-100 rounded-full appearance-none cursor-pointer accent-purple-500"
+                          value={autolyseSaltPercent}
+                          onChange={e => setAutolyseSaltPercent(parseFloat(e.target.value))}
+                        />
+                        <div className="flex justify-between mt-2 text-xs text-gray-400 font-bold">
+                          <span>0.5%</span>
+                          <span>2%</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 3. Farina Totale e Composizione */}
+          {/* 3. Farina di Chiusura */}
           <div>
-            <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
-              3. Farina Totale
-            </h4>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-black text-black mb-2">Farina Totale (g)</label>
-                <div className="flex items-center gap-4">
-                  <input 
-                    type="number" 
-                    value={totalFlour} 
-                    readOnly 
-                    className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-gray-600 cursor-not-allowed"
-                  />
-                  <span className="text-xs text-gray-400 font-bold">Base fissa</span>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-4 mb-4">Farina di Chiusura</h3>
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 space-y-6">
+              <div className="flex justify-between items-center px-1">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-black text-black uppercase tracking-widest">Farina di Chiusura</span>
+                  <button
+                    onClick={() => setUseClosingFlour(!useClosingFlour)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${useClosingFlour ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${useClosingFlour ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                  <span className="text-[10px] font-bold text-gray-400">{useClosingFlour ? 'ON' : 'OFF'}</span>
                 </div>
-                
-                {/* Selettore Farine Multiple */}
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-black text-gray-600 uppercase tracking-widest">Composizione Farine</label>
-                    <span className={`text-xs font-black ${flourSelections.reduce((sum, f) => sum + f.percentage, 0) === 100 ? 'text-green-600' : 'text-red-600'}`}>
-                      {flourSelections.reduce((sum, f) => sum + f.percentage, 0)}%
-                    </span>
-                  </div>
-                  
-                  {flourSelections.map((flourSel, idx) => {
-                    const flour = ingredients.find(i => i.id === flourSel.id);
-                    const remainingPercentage = 100 - flourSelections.reduce((sum, f, i) => i !== idx ? sum + f.percentage : sum, 0);
-                    
-                    return (
-                      <div key={flourSel.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                        <div className="flex items-center gap-3 mb-2">
-                          <select
-                            value={flourSel.id}
-                            onChange={(e) => {
-                              const newSelections = [...flourSelections];
-                              newSelections[idx].id = e.target.value;
-                              setFlourSelections(newSelections);
-                            }}
-                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-sm font-bold"
-                          >
-                            <option value="">Seleziona farina...</option>
-                            {availableFlours.map(flour => (
-                              <option key={flour.id} value={flour.id}>
-                                {flour.name} - €{flour.pricePerUnit.toFixed(2)}/kg
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => {
-                              setFlourSelections(flourSelections.filter((_, i) => i !== idx));
-                            }}
-                            className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="number"
-                            min="0"
-                            max={remainingPercentage}
-                            step="0.1"
-                            value={flourSel.percentage}
-                            onChange={(e) => {
-                              const newPercentage = Math.max(0, Math.min(remainingPercentage, parseFloat(e.target.value) || 0));
-                              const newSelections = [...flourSelections];
-                              newSelections[idx].percentage = newPercentage;
-                              setFlourSelections(newSelections);
-                            }}
-                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-sm font-bold text-center"
-                          />
-                          <span className="text-xs font-black text-gray-400 w-8">%</span>
-                          {flour && (
-                            <span className="text-xs font-bold text-gray-500">
-                              = {Math.round((totalFlour * flourSel.percentage) / 100)}g
+              </div>
+
+              {useClosingFlour && (
+                <div className="space-y-6 pt-4 border-t border-gray-50">
+                  {/* Se non ci sono prefermenti o autolisi, usa flourSelections, altrimenti usa remainingFlourSelections */}
+                  {!usePreferment && !useAutolyse ? (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center px-1">
+                        <span className="text-xs font-black text-black uppercase tracking-widest">Composizione Farine</span>
+                        <span className={`text-xs font-black bg-gray-50 px-4 py-2 rounded-2xl ${flourSelections.reduce((sum, f) => sum + f.percentage, 0) === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                          {flourSelections.reduce((sum, f) => sum + f.percentage, 0)}%
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {flourSelections.map((flourSel, idx) => {
+                          const flour = ingredients.find(i => i.id === flourSel.id);
+                          const remainingPercentage = 100 - flourSelections.reduce((sum, f, i) => i !== idx ? sum + f.percentage : sum, 0);
+                          
+                          return (
+                            <div key={flourSel.id} className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
+                              <div className="flex-1">
+                                <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
+                                <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
+                              </div>
+                              <input
+                                type="number"
+                                min="0"
+                                max={remainingPercentage}
+                                step="1"
+                                value={flourSel.percentage}
+                                onChange={(e) => {
+                                  const newSelections = [...flourSelections];
+                                  newSelections[idx].percentage = parseInt(e.target.value) || 0;
+                                  setFlourSelections(newSelections);
+                                }}
+                                className="w-20 bg-white border-none rounded-xl p-2 text-sm font-bold text-center"
+                              />
+                              <span className="text-xs font-black text-gray-400">%</span>
+                              <button
+                                onClick={() => setFlourSelections(flourSelections.filter((_, i) => i !== idx))}
+                                className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                        <button
+                          onClick={() => setShowFlourSelectModal('remaining')}
+                          className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-left flex items-center justify-between hover:bg-gray-100 transition-colors"
+                        >
+                          <span className="text-gray-400">Aggiungi farina...</span>
+                          <Plus size={18} className="text-gray-400" />
+                        </button>
+                        {flourSelections.length > 0 && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Totale:</span>
+                            <span className={`font-black ${flourSelections.reduce((sum, f) => sum + f.percentage, 0) === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                              {flourSelections.reduce((sum, f) => sum + f.percentage, 0)}%
                             </span>
-                          )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {remainingFlourPercentage > 0 ? (
+                        <>
+                          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                            <p className="text-sm font-black text-blue-800 mb-1">Farina rimanente da utilizzare</p>
+                            <p className="text-xs text-blue-600">
+                              Hai utilizzato <span className="font-black">{totalFlourUsedPercentage.toFixed(1)}%</span> della farina totale.
+                              Ti rimane <span className="font-black">{remainingFlourPercentage.toFixed(1)}%</span> da distribuire per la chiusura impasto.
+                            </p>
+                            <p className="text-[10px] text-blue-500 font-bold mt-2">
+                              Le percentuali inserite sono sulla farina rimanente (100% = {remainingFlourPercentage.toFixed(1)}% della farina totale)
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            {remainingFlourSelections.map((flourSel, idx) => {
+                              const flour = ingredients.find(i => i.id === flourSel.id);
+                              const totalPercentage = remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                              const remainingPercentage = 100 - (totalPercentage - flourSel.percentage);
+                              return (
+                                <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
+                                    <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={remainingPercentage}
+                                    step="1"
+                                    value={flourSel.percentage}
+                                    onChange={(e) => {
+                                      const newSelections = [...remainingFlourSelections];
+                                      newSelections[idx].percentage = parseInt(e.target.value) || 0;
+                                      setRemainingFlourSelections(newSelections);
+                                    }}
+                                    className="w-20 bg-white border-none rounded-xl p-2 text-sm font-bold text-center"
+                                  />
+                                  <span className="text-xs font-black text-gray-400">%</span>
+                                  <div className="text-[10px] text-gray-500 font-bold min-w-[60px] text-right">
+                                    = {((remainingFlourPercentage * flourSel.percentage) / 100).toFixed(1)}%
+                                  </div>
+                                  <button
+                                    onClick={() => setRemainingFlourSelections(remainingFlourSelections.filter((_, i) => i !== idx))}
+                                    className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            <button
+                              onClick={() => setShowFlourSelectModal('remaining')}
+                              className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-left flex items-center justify-between hover:bg-gray-100 transition-colors"
+                            >
+                              <span className="text-gray-400">Aggiungi farina...</span>
+                              <Plus size={18} className="text-gray-400" />
+                            </button>
+                            {remainingFlourSelections.length > 0 && (
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-400 font-bold">Totale:</span>
+                                <span className={`font-black ${
+                                  Math.abs(remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0) - 100) < 0.1 
+                                    ? 'text-green-600' 
+                                    : 'text-red-600'
+                                }`}>
+                                  {remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0).toFixed(1)}% / 100%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
+                          <p className="text-sm font-black text-gray-600">Hai già utilizzato il 100% della farina</p>
+                          <p className="text-xs text-gray-400 mt-1">Non è possibile aggiungere farina di chiusura</p>
                         </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 4. Farine Rimanenti per Chiusura Impasto - Solo se non abbiamo già usato il 100% */}
+          {false && (usePreferment || useAutolyse) && remainingFlourPercentage > 0 && (
+            <div>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-4 mb-4">Farine Rimanenti (Chiusura Impasto)</h3>
+              <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 space-y-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                  <p className="text-sm font-black text-blue-800 mb-1">Farina rimanente da utilizzare</p>
+                  <p className="text-xs text-blue-600">
+                    Hai utilizzato <span className="font-black">{totalFlourUsedPercentage.toFixed(1)}%</span> della farina totale.
+                    Ti rimane <span className="font-black">{remainingFlourPercentage.toFixed(1)}%</span> da aggiungere per la chiusura impasto.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {remainingFlourSelections.map((flourSel, idx) => {
+                    const flour = ingredients.find(i => i.id === flourSel.id);
+                    return (
+                      <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
+                        <div className="flex-1">
+                          <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
+                          <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          max={Math.round(remainingFlourPercentage)}
+                          step="1"
+                          value={flourSel.percentage}
+                          onChange={(e) => {
+                            const newSelections = [...remainingFlourSelections];
+                            newSelections[idx].percentage = parseInt(e.target.value) || 0;
+                            setRemainingFlourSelections(newSelections);
+                          }}
+                          className="w-20 bg-white border-none rounded-xl p-2 text-sm font-bold text-center"
+                        />
+                        <span className="text-xs font-black text-gray-400">%</span>
+                        <button
+                          onClick={() => setRemainingFlourSelections(remainingFlourSelections.filter((_, i) => i !== idx))}
+                          className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
+                        >
+                          <X size={16} />
+                        </button>
                       </div>
                     );
                   })}
-                  
-                  {prefFlourSelections.length === 0 && autolyseFlourSelections.length === 0 && (
-                    <button
-                      onClick={() => {
-                        if (availableFlours.length === 0 && onAddIngredient) {
-                          setMissingIngredients(['Farina']);
-                          setCurrentMissingIdx(0);
-                          setWizardIng({ name: 'Farina', unit: 'kg', category: 'Farine' });
-                        } else {
-                          setShowAddFlourModal(true);
-                        }
-                      }}
-                      className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold text-sm flex items-center justify-center space-x-2 hover:border-gray-300 hover:text-gray-500 transition-colors"
-                    >
-                      <Plus size={16} /> <span>Aggiungi Farina</span>
-                    </button>
-                  )}
-                  
-                  {flourSelections.reduce((sum, f) => sum + f.percentage, 0) !== 100 && flourSelections.length > 0 && (
-                    <p className="text-xs text-red-500 font-bold text-center">
-                      Le percentuali devono sommare a 100% (attuale: {flourSelections.reduce((sum, f) => sum + f.percentage, 0)}%)
-                    </p>
+                  <button
+                    onClick={() => setShowFlourSelectModal('remaining')}
+                    className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-left flex items-center justify-between hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-gray-400">Aggiungi farina rimanente...</span>
+                    <Plus size={18} className="text-gray-400" />
+                  </button>
+                  {remainingFlourSelections.length > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400 font-bold">Totale aggiunto:</span>
+                      <span className={`font-black ${
+                        Math.abs(remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0) - remainingFlourPercentage) < 0.1 
+                          ? 'text-green-600' 
+                          : 'text-red-600'
+                      }`}>
+                        {remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0).toFixed(1)}% / {remainingFlourPercentage.toFixed(1)}%
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* 4. Farine Rimanenti per Chiusura Impasto */}
-          {(usePreferment || useAutolyse) && (
-            <div>
-              <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
-                4. Farine Rimanenti (Chiusura Impasto)
-              </h4>
-              <div className="space-y-2">
-                {remainingFlourSelections.map((flourSel, idx) => {
-                  const flour = ingredients.find(i => i.id === flourSel.id);
-                  return (
-                    <div key={idx} className="bg-white p-3 rounded-2xl border border-gray-100 flex items-center gap-3">
+          {/* 4. Ingredienti Aggiuntivi (calcolati sulla farina 100%) */}
+          <div>
+            <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
+              {(usePreferment || useAutolyse) ? '5. Ingredienti Aggiuntivi' : '4. Ingredienti Aggiuntivi'}
+            </h4>
+            <p className="text-xs text-gray-400 font-bold mb-4 px-1">
+              Gli ingredienti aggiuntivi sono calcolati sulla farina totale (1000g) e non influenzano le percentuali delle farine
+            </p>
+            
+            <div className="space-y-3">
+              {additionalIngredients.map((ing, idx) => {
+                const ingredient = ingredients.find(i => i.id === ing.id);
+                return (
+                  <div key={idx} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-3">
                       <div className="flex-1">
-                        <p className="text-sm font-black text-black">{flour?.name || 'Farina...'}</p>
-                        <p className="text-[10px] text-gray-400 font-bold">€{flour?.pricePerUnit.toFixed(2) || '0.00'}/kg</p>
+                        <p className="font-bold text-sm text-black">{ingredient?.name || 'Ingrediente...'}</p>
+                        <p className="text-xs text-gray-400 font-bold">{ingredient?.category || ''}</p>
                       </div>
                       <input
                         type="number"
                         min="0"
-                        max="100"
-                        step="1"
-                        value={flourSel.percentage}
+                        step="0.1"
+                        value={ing.quantity}
                         onChange={(e) => {
-                          const newSelections = [...remainingFlourSelections];
-                          newSelections[idx].percentage = parseInt(e.target.value) || 0;
-                          setRemainingFlourSelections(newSelections);
+                          const newIngredients = [...additionalIngredients];
+                          newIngredients[idx].quantity = parseFloat(e.target.value) || 0;
+                          setAdditionalIngredients(newIngredients);
                         }}
-                        className="w-20 bg-gray-50 border-none rounded-xl p-2 text-sm font-bold text-center"
+                        className="w-24 bg-gray-50 border-none rounded-xl p-2 text-sm font-bold text-center"
                       />
-                      <span className="text-xs font-black text-gray-400">%</span>
+                      <span className="text-xs font-black text-gray-400 w-8">{ingredient?.unit || 'g'}</span>
                       <button
-                        onClick={() => setRemainingFlourSelections(remainingFlourSelections.filter((_, i) => i !== idx))}
+                        onClick={() => {
+                          setAdditionalIngredients(additionalIngredients.filter((_, i) => i !== idx));
+                        }}
                         className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
                       >
                         <X size={16} />
                       </button>
                     </div>
-                  );
-                })}
-                <button
-                  onClick={() => setShowFlourSelectModal('remaining')}
-                  className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold text-left flex items-center justify-between hover:bg-gray-100 transition-colors"
-                >
-                  <span className="text-gray-400">Aggiungi farina rimanente...</span>
-                  <Plus size={18} className="text-gray-400" />
-                </button>
-                {remainingFlourSelections.length > 0 && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400 font-bold">Totale:</span>
-                    <span className="font-black text-gray-600">
-                      {remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0)}%
-                    </span>
                   </div>
-                )}
-              </div>
+                );
+              })}
+              
+              <button
+                onClick={() => setShowAddIngredientModalCalc(true)}
+                className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold text-sm flex items-center justify-center space-x-2 hover:border-gray-300 hover:text-gray-500 transition-colors"
+              >
+                <Plus size={16} /> <span>Aggiungi Ingrediente</span>
+              </button>
             </div>
-          )}
+          </div>
 
-          {/* 4. Parametri Impasto */}
+          {/* 5. Parametri Impasto */}
           <div>
             <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
-              {usePreferment || useAutolyse ? '5. Parametri Impasto' : '4. Parametri Impasto'}
+              {(usePreferment || useAutolyse) ? '6. Parametri Impasto' : '5. Parametri Impasto'}
             </h4>
             
             <div className="space-y-4">
@@ -1506,47 +1786,40 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
           <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
             <h4 className="text-sm font-black text-black uppercase tracking-widest">Anteprima Ricetta</h4>
             
-            {usePreferment && prefFlourSelections.length > 0 && (
+            {usePreferment && selectedPrefermentId && (
               <div className="mb-4">
-                <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">1° Step: Pre-fermento ({prefType === 'biga' ? 'Biga' : 'Poolish'})</div>
-                <div className="space-y-2 text-sm">
-                  <div className="space-y-1">
-                    {prefFlourSelections.map((flourSel, idx) => {
-                      const flour = ingredients.find(i => i.id === flourSel.id);
-                      const prefPct = prefPercentage / 100;
-                      const flourQty = (totalFlour * prefPct * flourSel.percentage) / 100;
-                      return (
-                        <div key={idx} className="flex justify-between">
-                          <span className="text-gray-600">{flour?.name || 'Farina...'} ({flourSel.percentage}%)</span>
-                          <span className="font-black">{Math.round(flourQty)} g</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between"><span className="text-gray-600">Acqua</span><span className="font-black">{Math.round(calculateRecipe.prefWater)} g</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Lievito</span><span className="font-black">{calculateRecipe.prefYeast.toFixed(1)} g</span></div>
-                </div>
+                {(() => {
+                  const selectedPreferment = preferments.find(p => p.id === selectedPrefermentId);
+                  return selectedPreferment ? (
+                    <>
+                      <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">1° Step: Pre-fermento ({selectedPreferment.name} - {selectedPreferment.type === 'biga' ? 'Biga' : 'Poolish'})</div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">Farina</span><span className="font-black">{Math.round(calculateRecipe.prefFlour)} g</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Acqua</span><span className="font-black">{Math.round(calculateRecipe.prefWater)} g</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Lievito</span><span className="font-black">{calculateRecipe.prefYeast.toFixed(1)} g</span></div>
+                      </div>
+                    </>
+                  ) : null;
+                })()}
               </div>
             )}
 
-            {useAutolyse && autolyseFlourSelections.length > 0 && (
+            {useAutolyse && autolyseFlourPercentage > 0 && (
               <div className="mb-4">
-                <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Autolisi</div>
+                <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">2° Step: Autolisi</div>
                 <div className="space-y-2 text-sm">
-                  <div className="space-y-1">
-                    {autolyseFlourSelections.map((flourSel, idx) => {
-                      const flour = ingredients.find(i => i.id === flourSel.id);
-                      const autolyseFlourPct = usePreferment && prefPercentage > 0 ? prefPercentage : 100;
-                      const flourQty = (totalFlour * autolyseFlourPct * autolysePercentage * flourSel.percentage) / 1000000;
-                      return (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span className="text-gray-600">{flour?.name || 'Farina...'} ({flourSel.percentage}%)</span>
-                          <span className="font-black">{Math.round(flourQty)} g</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between"><span className="text-gray-600">Acqua</span><span className="font-black">{Math.round(calculateRecipe.autolyseWater || 0)} g</span></div>
+                  {(() => {
+                    const autFlourQty = (totalFlour * autolyseFlourPercentage) / 100;
+                    return (
+                      <>
+                        <div className="flex justify-between"><span className="text-gray-600">Farina</span><span className="font-black">{Math.round(autFlourQty)} g</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Acqua</span><span className="font-black">{Math.round(calculateRecipe.autolyseWater || 0)} g</span></div>
+                        {useSaltInAutolyse && (
+                          <div className="flex justify-between"><span className="text-gray-600">Sale</span><span className="font-black">{Math.round((totalFlour * autolyseFlourPercentage * autolyseSaltPercent) / 10000)} g</span></div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1568,7 +1841,22 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   )}
                   <div className="flex justify-between"><span>Acqua Restante</span><span>{Math.round(calculateRecipe.mainWater)} g</span></div>
                 </div>
-                <div className="flex justify-between"><span className="text-gray-600">Sale</span><span className="font-black">{Math.round(calculateRecipe.salt)} g</span></div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Sale</span>
+                  <span className="font-black">{Math.round(calculateRecipe.salt)} g</span>
+                </div>
+                {useAutolyse && useSaltInAutolyse && (
+                  <div className="pl-4 text-xs text-gray-500">
+                    <div className="flex justify-between">
+                      <span>Sale Autolisi</span>
+                      <span>{Math.round((totalFlour * autolyseFlourPercentage * autolyseSaltPercent) / 10000)} g</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Sale Principale</span>
+                      <span>{Math.round(calculateRecipe.salt - (totalFlour * autolyseFlourPercentage * autolyseSaltPercent) / 10000)} g</span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between"><span className="text-gray-600">Olio</span><span className="font-black">{Math.round(calculateRecipe.oil)} g</span></div>
                 <div className="flex justify-between"><span className="text-gray-600">Lievito</span><span className="font-black">{calculateRecipe.mainYeast.toFixed(1)} g</span></div>
                 {usePreferment && calculateRecipe.malt > 0 && (
@@ -1592,57 +1880,6 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   <span className="text-xl font-black text-purple-600">€{((costPerKg * portionWeight) / 1000).toFixed(2)}</span>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* 5. Ingredienti Aggiuntivi */}
-          <div>
-            <h4 className="text-sm font-black text-black uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">
-              5. Ingredienti Aggiuntivi
-            </h4>
-            
-            <div className="space-y-3">
-              {additionalIngredients.map((ing, idx) => {
-                const ingredient = ingredients.find(i => i.id === ing.id);
-                return (
-                  <div key={idx} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-black">{ingredient?.name || 'Ingrediente...'}</p>
-                        <p className="text-xs text-gray-400 font-bold">{ingredient?.category || ''}</p>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={ing.quantity}
-                        onChange={(e) => {
-                          const newIngredients = [...additionalIngredients];
-                          newIngredients[idx].quantity = parseFloat(e.target.value) || 0;
-                          setAdditionalIngredients(newIngredients);
-                        }}
-                        className="w-24 bg-gray-50 border-none rounded-xl p-2 text-sm font-bold text-center"
-                      />
-                      <span className="text-xs font-black text-gray-400 w-8">{ingredient?.unit || 'g'}</span>
-                      <button
-                        onClick={() => {
-                          setAdditionalIngredients(additionalIngredients.filter((_, i) => i !== idx));
-                        }}
-                        className="bg-red-50 text-red-500 p-2 rounded-xl hover:bg-red-100 transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              
-              <button
-                onClick={() => setShowAddIngredientModalCalc(true)}
-                className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold text-sm flex items-center justify-center space-x-2 hover:border-gray-300 hover:text-gray-500 transition-colors"
-              >
-                <Plus size={16} /> <span>Aggiungi Ingrediente</span>
-              </button>
             </div>
           </div>
 
@@ -1679,8 +1916,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
               setPortionWeight(250);
               setHydrationTotal(70);
               setUsePreferment(false);
-              setPrefType('biga');
-              setPrefPercentage(30);
+              setSelectedPrefermentId(null);
+              setPrefFlourPercentage(30);
               setSaltPercent(2.5);
               setOilPercent(2);
               setYeastPercent(0.7);
@@ -2223,10 +2460,19 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                       // Escludi farine già selezionate in altri contesti solo se non stiamo selezionando per quello stesso contesto
                       const alreadyInPref = showFlourSelectModal !== 'preferment' && prefFlourSelections.some(f => f.id === flour.id);
                       const alreadyInAutolyse = showFlourSelectModal !== 'autolyse' && autolyseFlourSelections.some(f => f.id === flour.id);
-                      const alreadyInRemaining = showFlourSelectModal !== 'remaining' && remainingFlourSelections.some(f => f.id === flour.id);
-                      const alreadyInCurrent = showFlourSelectModal === 'preferment' && prefFlourSelections.some(f => f.id === flour.id) ||
-                                             showFlourSelectModal === 'autolyse' && autolyseFlourSelections.some(f => f.id === flour.id) ||
-                                             showFlourSelectModal === 'remaining' && remainingFlourSelections.some(f => f.id === flour.id);
+                      const alreadyInRemaining = showFlourSelectModal !== 'remaining' && (
+                        (usePreferment || useAutolyse) 
+                          ? remainingFlourSelections.some(f => f.id === flour.id)
+                          : flourSelections.some(f => f.id === flour.id)
+                      );
+                      const alreadyInCurrent = 
+                        (showFlourSelectModal === 'preferment' && prefFlourSelections.some(f => f.id === flour.id)) ||
+                        (showFlourSelectModal === 'autolyse' && autolyseFlourSelections.some(f => f.id === flour.id)) ||
+                        (showFlourSelectModal === 'remaining' && (
+                          (usePreferment || useAutolyse) 
+                            ? remainingFlourSelections.some(f => f.id === flour.id)
+                            : flourSelections.some(f => f.id === flour.id)
+                        ));
                       return nameMatch && !alreadyInPref && !alreadyInAutolyse && !alreadyInRemaining && !alreadyInCurrent;
                     })
                     .map(flour => (
@@ -2234,11 +2480,22 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                         key={flour.id}
                         onClick={() => {
                           if (showFlourSelectModal === 'preferment') {
-                            setPrefFlourSelections([...prefFlourSelections, { id: flour.id, percentage: 0 }]);
+                            // Le percentuali sono sulla percentuale del prefermento (es. 20% della farina totale)
+                            const isFirstFlour = prefFlourSelections.length === 0;
+                            const currentTotal = prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                            const availablePercentage = prefFlourPercentage - currentTotal;
+                            setPrefFlourSelections([...prefFlourSelections, { id: flour.id, percentage: isFirstFlour ? prefFlourPercentage : Math.max(0, availablePercentage) }]);
                           } else if (showFlourSelectModal === 'autolyse') {
-                            setAutolyseFlourSelections([...autolyseFlourSelections, { id: flour.id, percentage: 0 }]);
+                            // Le percentuali sono sulla percentuale dell'autolisi (es. 30% della farina totale)
+                            const isFirstFlour = autolyseFlourSelections.length === 0;
+                            const currentTotal = autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                            const availablePercentage = autolyseFlourPercentage - currentTotal;
+                            setAutolyseFlourSelections([...autolyseFlourSelections, { id: flour.id, percentage: isFirstFlour ? autolyseFlourPercentage : Math.max(0, availablePercentage) }]);
                           } else if (showFlourSelectModal === 'remaining') {
-                            setRemainingFlourSelections([...remainingFlourSelections, { id: flour.id, percentage: 0 }]);
+                            // Per le farine rimanenti, calcola la percentuale disponibile
+                            const currentTotal = remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                            const availablePercentage = Math.max(0, remainingFlourPercentage - currentTotal);
+                            setRemainingFlourSelections([...remainingFlourSelections, { id: flour.id, percentage: availablePercentage > 0 ? Math.min(100, availablePercentage) : 0 }]);
                           }
                           setShowFlourSelectModal(null);
                           setFlourSelectSearch('');
