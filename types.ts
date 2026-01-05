@@ -36,6 +36,8 @@ export interface BepConfig {
   serviceIncidence: number;
   wasteIncidence: number;
   averageTicket: number;
+  deliveryEnabled?: boolean;
+  deliveryIncidence?: number;
 }
 
 export interface UserData {
@@ -70,6 +72,7 @@ export interface SubRecipe {
   initialWeight: number;
   procedure?: string;
   category: string;
+  portionWeight?: number; // Peso porzione in grammi (per ricette laboratorio)
 }
 
 export interface MenuItem {
@@ -78,6 +81,7 @@ export interface MenuItem {
   components: ComponentUsage[];
   sellingPrice: number;
   category: string;
+  isDelivery?: boolean;
 }
 
-export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'suppliers' | 'staff' | 'assets' | 'profile';
+export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'suppliers' | 'staff' | 'assets' | 'profile';

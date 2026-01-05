@@ -82,7 +82,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ suppliers, onSave, onDele
             <div className="grid grid-cols-2 gap-6">
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Azienda</label>
-                <input placeholder="Esempio: Caseificio Valfiorita" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                <input placeholder="Esempio: Caseificio Valfiorita" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold" value={form.name} onChange={e => setForm({...form, name: e.target.value})} onBlur={e => setForm({...form, name: normalizeText(e.target.value)})} />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Telefono</label>

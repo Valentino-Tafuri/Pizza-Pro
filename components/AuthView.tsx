@@ -121,7 +121,7 @@ const AuthView: React.FC = () => {
       </div>
 
       <p className="mt-auto mb-8 text-[10px] text-gray-300 text-center uppercase tracking-widest font-black">
-        PizzaCost v2.0 • Progettato per iOS
+        Pizza Pro v2.0 • Progettato per iOS
       </p>
     </div>
   );

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { 
   LayoutDashboard, Utensils, Beaker, Package, Settings, 
-  Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User
+  Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User, Calculator
 } from 'lucide-react';
 import { ViewType } from '../types';
 
@@ -22,8 +22,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
       items: [
         { id: 'dashboard' as ViewType, label: 'Dashboard', icon: LayoutDashboard },
         { id: 'economato' as ViewType, label: 'Economato', icon: Package },
-        { id: 'lab' as ViewType, label: 'Laboratorio', icon: Beaker },
+        { id: 'lab' as ViewType, label: 'Topping', icon: Beaker },
         { id: 'menu' as ViewType, label: 'Menu', icon: Utensils },
+        { id: 'laboratorio' as ViewType, label: 'Laboratorio', icon: Calculator },
       ]
     },
     {
@@ -43,7 +44,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
           <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg">
             <Utensils className="text-white" size={20} />
           </div>
-          <span className="text-xl font-black tracking-tighter">PizzaCost</span>
+          <span className="text-xl font-black tracking-tighter">Pizza Pro</span>
         </div>
 
         <nav className="space-y-8">
@@ -113,7 +114,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2">
             <MenuIcon size={24} />
           </button>
-          <h1 className="text-lg font-black tracking-tighter">PizzaCost</h1>
+          <h1 className="text-lg font-black tracking-tighter">Pizza Pro</h1>
           <div className="w-10" /> {/* Spacer */}
         </header>
 

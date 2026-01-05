@@ -18,25 +18,36 @@ export const calculateSubRecipeCostPerKg = (
 ): number => {
   if (depth > 5) return 0;
 
+  // Calcola il costo totale di tutti i componenti
   const totalCost = subRecipe.components.reduce((acc, comp) => {
     if (comp.type === 'ingredient') {
       const ing = ingredients.find(i => i.id === comp.id);
       if (!ing) return acc;
       // Quantità in grammi, prezzo al kg/l -> moltiplicatore 0.001
+      // Per unità diverse (pz, ml, etc.) il prezzo è già per unità
       const multiplier = (ing.unit === 'kg' || ing.unit === 'l') ? 0.001 : 1;
-      return acc + (ing.pricePerUnit * comp.quantity * multiplier);
+      const componentCost = ing.pricePerUnit * comp.quantity * multiplier;
+      return acc + componentCost;
     } 
     else if (comp.type === 'subrecipe') {
       const nestedSub = subRecipes.find(s => s.id === comp.id);
       if (!nestedSub || nestedSub.id === subRecipe.id) return acc;
-      const costPerKg = calculateSubRecipeCostPerKg(nestedSub, ingredients, subRecipes, depth + 1);
-      // I semilavorati usati come componenti sono ora in grammi -> / 1000
-      return acc + (costPerKg * (comp.quantity / 1000));
+      // Calcola ricorsivamente il costo al kg del semilavorato nidificato
+      const nestedCostPerKg = calculateSubRecipeCostPerKg(nestedSub, ingredients, subRecipes, depth + 1);
+      // I semilavorati usati come componenti sono in grammi -> / 1000 per convertire a kg
+      const componentCost = nestedCostPerKg * (comp.quantity / 1000);
+      return acc + componentCost;
     }
     return acc;
   }, 0);
   
-  return subRecipe.yieldWeight > 0 ? totalCost / subRecipe.yieldWeight : 0;
+  // Il costo al kg è il costo totale diviso per la resa finale (in kg)
+  // yieldWeight è già in kg, quindi dividiamo direttamente
+  if (subRecipe.yieldWeight > 0) {
+    return totalCost / subRecipe.yieldWeight;
+  }
+  
+  return 0;
 };
 
 /**
@@ -63,8 +74,17 @@ export const calculateMenuItemCost = (
       const sub = subRecipes.find(s => s.id === comp.id);
       if (!sub) return acc;
       const costPerKg = calculateSubRecipeCostPerKg(sub, ingredients, subRecipes);
-      // MODIFICA: Il semilavorato nel menu viene inserito in grammi -> / 1000
-      return acc + (costPerKg * (comp.quantity / 1000));
+      
+      // Se la ricetta ha un peso porzione definito (ricette laboratorio), usa quello
+      // altrimenti usa la quantità in grammi come prima
+      if (sub.portionWeight && sub.portionWeight > 0) {
+        // comp.quantity è il numero di porzioni (es. 1, 0.5, 2)
+        const costPerPortion = (costPerKg * sub.portionWeight) / 1000;
+        return acc + (costPerPortion * comp.quantity);
+      } else {
+        // Comportamento originale: quantità in grammi
+        return acc + (costPerKg * (comp.quantity / 1000));
+      }
     } 
     else if (comp.type === 'menuitem') {
       const nestedItem = menu.find(m => m.id === comp.id);

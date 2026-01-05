@@ -80,11 +80,11 @@ const StaffView: React.FC<StaffViewProps> = ({ employees, onSave, onDelete }) =>
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Nome</label>
-                <input placeholder="Esempio: Marco" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} />
+                <input placeholder="Esempio: Marco" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} onBlur={e => setForm({...form, firstName: normalizeText(e.target.value)})} />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Cognome</label>
-                <input placeholder="Esempio: Rossi" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} />
+                <input placeholder="Esempio: Rossi" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} onBlur={e => setForm({...form, lastName: normalizeText(e.target.value)})} />
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Reparto</label>

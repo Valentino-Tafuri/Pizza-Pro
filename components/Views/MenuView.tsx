@@ -1,8 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, X, Edit2, Trash2, Loader2, Wand2, BrainCircuit, ClipboardList, ArrowRight, AlertTriangle } from 'lucide-react';
-import { MenuItem, Ingredient, SubRecipe, ComponentUsage, Unit, Supplier } from '../../types';
-import { calculateMenuItemCost, getFoodCostColor } from '../../services/calculator';
+import { MenuItem, Ingredient, SubRecipe, ComponentUsage, Unit, Supplier, UserData } from '../../types';
+import { normalizeText } from '../../utils/textUtils';
+
+const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+import { calculateMenuItemCost, calculateSubRecipeCostPerKg, getFoodCostColor } from '../../services/calculator';
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface MenuViewProps {
@@ -10,6 +13,7 @@ interface MenuViewProps {
   ingredients: Ingredient[];
   subRecipes: SubRecipe[];
   suppliers: Supplier[];
+  userData: UserData;
   onAdd: (item: MenuItem) => void;
   onUpdate: (item: MenuItem) => void;
   onDelete?: (id: string) => void;
@@ -17,7 +21,7 @@ interface MenuViewProps {
   onAddSupplier?: (supplier: Supplier) => Promise<string | undefined>;
 }
 
-const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, suppliers, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier }) => {
+const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, suppliers, userData, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [creationMode, setCreationMode] = useState<'choice' | 'manual' | 'ai' | null>(null);
@@ -28,10 +32,41 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
   const [missingComps, setMissingComps] = useState<any[]>([]);
   const [currentMissingIdx, setCurrentMissingIdx] = useState(-1);
   const [quickIngPrice, setQuickIngPrice] = useState('');
+  const [showAddComponentModal, setShowAddComponentModal] = useState(false);
+  const [addComponentSearch, setAddComponentSearch] = useState('');
+  const [showNewIngredientForm, setShowNewIngredientForm] = useState(false);
+  const [newIngredientForm, setNewIngredientForm] = useState<Partial<Ingredient>>({ 
+    name: '', 
+    unit: 'kg', 
+    pricePerUnit: 0, 
+    category: '', 
+    supplierId: '' 
+  });
+  const [isAddingNewCategoryIng, setIsAddingNewCategoryIng] = useState(false);
+  const [showSupModal, setShowSupModal] = useState(false);
+  const [supForm, setSupForm] = useState<Partial<Supplier>>({ deliveryDays: [] });
+  const [supLoading, setSupLoading] = useState(false);
+  const [isAddingNewCategoryForm, setIsAddingNewCategoryForm] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
+    };
+  }, [longPressTimer]);
 
   const categories = useMemo(() => {
     return Array.from(new Set(menu.map(item => item.category))).filter(Boolean);
   }, [menu]);
+
+  const ingredientCategories = useMemo(() => {
+    return Array.from(new Set(ingredients.map(i => i.category))).filter(Boolean);
+  }, [ingredients]);
 
   const filteredMenu = useMemo(() => {
     return menu.filter(item => {
@@ -43,10 +78,16 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
 
   const handleAICreate = async () => {
     if (!aiPrompt) return;
+    
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY' || apiKey.includes('PLACEHOLDER')) {
+      alert("⚠️ API Key Gemini non configurata!\n\nConfigura GEMINI_API_KEY nel file .env.local");
+      return;
+    }
+    
     setAiLoading(true);
     try {
-      // Use the API key directly from process.env.API_KEY as per guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Sei un esperto Pizza Chef. Crea una ricetta per: "${aiPrompt}". 
@@ -159,53 +200,227 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
     <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
       <div className="px-6 pt-12 pb-4 flex justify-between items-center border-b border-gray-50">
         <h3 className="font-black text-2xl tracking-tight">{isEdit ? 'Modifica Pizza' : 'Dettagli Ricetta'}</h3>
-        <button onClick={() => { setCreationMode(null); setEditingId(null); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={20}/></button>
+        <button onClick={() => { setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={20}/></button>
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide pb-32">
-        <input type="text" className="w-full bg-gray-50 border-none rounded-2xl p-4 text-xl font-black" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} placeholder="Nome Pizza" />
+        <input type="text" className="w-full bg-gray-50 border-none rounded-2xl p-4 text-xl font-black" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} onBlur={e => setForm({...form, name: normalizeText(e.target.value)})} placeholder="Nome Pizza" />
         
         <div className="space-y-2">
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Categoria</label>
-          <input type="text" className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold" value={form.category || ''} onChange={e => setForm({...form, category: e.target.value})} placeholder="Es: Pizze Classiche" />
+          <div className="flex flex-wrap gap-2">
+            {categories.map(cat => (
+              <button 
+                key={cat} 
+                onClick={() => { setForm({...form, category: cat}); setIsAddingNewCategoryForm(false); }}
+                className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${form.category === cat ? 'bg-black text-white' : 'bg-gray-100 text-gray-400'}`}
+              >
+                {cat}
+              </button>
+            ))}
+            <button 
+              onClick={() => setIsAddingNewCategoryForm(true)}
+              className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center space-x-1 ${isAddingNewCategoryForm ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-400'}`}
+            >
+              <Plus size={12}/> <span>Nuova</span>
+            </button>
+          </div>
+          {isAddingNewCategoryForm && (
+            <input 
+              autoFocus
+              placeholder="Nome nuova categoria..." 
+              className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-blue-100 border mt-2" 
+              value={form.category} 
+              onChange={e => setForm({...form, category: e.target.value})} 
+            />
+          )}
         </div>
+
+        {/* Toggle Delivery - solo se delivery è abilitato nelle impostazioni */}
+        {userData?.bepConfig?.deliveryEnabled && (
+          <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <div>
+              <span className="text-sm font-black text-black">Servita in Delivery</span>
+              <p className="text-[9px] text-gray-400 font-bold mt-1">Include costi delivery nell'Asset Cost</p>
+            </div>
+            <button
+              onClick={() => setForm({...form, isDelivery: !form.isDelivery})}
+              className={`relative w-12 h-6 rounded-full transition-colors ${form.isDelivery ? 'bg-green-500' : 'bg-gray-300'}`}
+            >
+              <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${form.isDelivery ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        )}
 
         <div className="space-y-3">
           {form.components?.map(c => {
-            const item = ingredients.find(i => i.id === c.id) || subRecipes.find(s => s.id === c.id);
+            const item = ingredients.find(i => i.id === c.id) || subRecipes.find(s => s.id === c.id) || menu.find(m => m.id === c.id);
+            // Calcola il costo del componente
+            let componentCost = 0;
+            if (c.type === 'ingredient') {
+              const ing = ingredients.find(i => i.id === c.id);
+              if (ing) {
+                const multiplier = (ing.unit === 'kg' || ing.unit === 'l') ? 0.001 : 1;
+                componentCost = ing.pricePerUnit * c.quantity * multiplier;
+              }
+            } else if (c.type === 'subrecipe') {
+              const sub = subRecipes.find(s => s.id === c.id);
+              if (sub) {
+                const costPerKg = calculateSubRecipeCostPerKg(sub, ingredients, subRecipes);
+                // Se è una ricetta del laboratorio (ha portionWeight), usa il peso porzione
+                if (sub.portionWeight && sub.portionWeight > 0) {
+                  const costPerPortion = (costPerKg * sub.portionWeight) / 1000;
+                  componentCost = costPerPortion * c.quantity; // quantity è in porzioni
+                } else {
+                  // Comportamento originale: quantità in grammi
+                  componentCost = costPerKg * (c.quantity / 1000);
+                }
+              }
+            } else if (c.type === 'menuitem') {
+              const menuItem = menu.find(m => m.id === c.id);
+              if (menuItem) {
+                const itemCost = calculateMenuItemCost(menuItem, ingredients, subRecipes, menu);
+                componentCost = itemCost * c.quantity; // quantity è in porzioni (0.5 o 1.0)
+              }
+            }
+            
+            // Calcola il costo totale della ricetta
+            const totalCost = calculateMenuItemCost(form as MenuItem, ingredients, subRecipes, menu);
+            const incidence = totalCost > 0 ? (componentCost / totalCost) * 100 : 0;
+            
             return (
-              <div key={c.id} className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <span className="font-bold text-sm flex-1 truncate">{item?.name || 'Sync...'}</span>
-                <div className="flex items-center bg-gray-50 px-3 py-2 rounded-xl">
-                  <input type="number" className="w-12 bg-transparent text-center font-black text-xs" value={c.quantity} onChange={e => setForm({...form, components: form.components?.map(comp => comp.id === c.id ? {...comp, quantity: parseFloat(e.target.value)} : comp)})} />
-                  <span className="text-[10px] text-gray-400 font-bold ml-1 uppercase">g</span>
+              <div key={c.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm flex-1 truncate">{item?.name || 'Sync...'}</span>
+                  <div className="flex items-center bg-gray-50 px-3 py-2 rounded-xl">
+                    <input 
+                      type="number" 
+                      step={c.type === 'menuitem' || (c.type === 'subrecipe' && subRecipes.find(s => s.id === c.id)?.portionWeight) ? 0.5 : 0.1}
+                      className="w-16 bg-transparent text-center font-black text-xs" 
+                      value={c.quantity} 
+                      onChange={e => setForm({...form, components: form.components?.map(comp => comp.id === c.id ? {...comp, quantity: parseFloat(e.target.value)} : comp)})} 
+                    />
+                    <span className="text-[10px] text-gray-400 font-bold ml-1 uppercase">
+                      {c.type === 'menuitem' || (c.type === 'subrecipe' && subRecipes.find(s => s.id === c.id)?.portionWeight) ? 'porz' : 'g'}
+                    </span>
+                    <button 
+                      onClick={() => setForm({...form, components: form.components?.filter(comp => comp.id !== c.id)})} 
+                      className="ml-2 text-red-200 hover:text-red-500 transition-colors"
+                    >
+                      <X size={14}/>
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-gray-400 font-bold">€{componentCost.toFixed(2)}</span>
+                  <span className="text-blue-600 font-black">{incidence.toFixed(1)}%</span>
                 </div>
               </div>
             );
           })}
+          
+          <button 
+            onClick={() => setShowAddComponentModal(true)}
+            className="w-full py-4 border-2 border-dashed border-gray-100 rounded-2xl text-gray-300 font-bold text-xs flex items-center justify-center space-x-2 hover:border-gray-200 hover:text-gray-400 transition-colors"
+          >
+            <Plus size={14}/> <span>Aggiungi Manualmente</span>
+          </button>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-black text-white p-5 rounded-3xl text-center">
-            <span className="text-[9px] font-black uppercase text-gray-400 block mb-1">Prezzo Vendita</span>
-            <input type="number" step="0.5" className="bg-transparent border-none text-2xl font-black text-white w-full text-center p-0" value={form.sellingPrice || ''} onChange={e => setForm({...form, sellingPrice: parseFloat(e.target.value)})} />
-          </div>
-          <div className="bg-blue-50 text-blue-600 p-5 rounded-3xl text-center flex flex-col justify-center">
-            <span className="text-[9px] font-black uppercase block mb-1">Food Cost</span>
-            <p className="text-2xl font-black">{((calculateMenuItemCost(form as MenuItem, ingredients, subRecipes) / (form.sellingPrice || 1)) * 100).toFixed(1)}%</p>
-          </div>
-        </div>
+        
+        {/* Calcolo prezzo consigliato */}
+        {(() => {
+          const totalCost = calculateMenuItemCost(form as MenuItem, ingredients, subRecipes);
+          const bepConfig = userData?.bepConfig || { foodCostIncidence: 30, serviceIncidence: 5, wasteIncidence: 2 };
+          const foodCostIncidence = bepConfig.foodCostIncidence || 30;
+          const serviceIncidence = bepConfig.serviceIncidence || 5;
+          const wasteIncidence = bepConfig.wasteIncidence || 2;
+          const deliveryEnabled = bepConfig.deliveryEnabled || false;
+          const deliveryIncidence = bepConfig.deliveryIncidence || 0;
+          
+          // Calcola il Total Asset Cost includendo il delivery solo se:
+          // 1. Il delivery è abilitato nelle impostazioni
+          // 2. La pizza è marcata come "in delivery"
+          let totalVariableIncidence = foodCostIncidence + serviceIncidence + wasteIncidence;
+          if (deliveryEnabled && form.isDelivery) {
+            totalVariableIncidence += deliveryIncidence;
+          }
+          
+          // Prezzo consigliato Asset Cost: calcolato in modo che il Food Cost sul prezzo finale 
+          // sia esattamente uguale al Food Cost Previsto impostato nelle impostazioni
+          // Formula base: Prezzo Base = Costo Materie Prime / (Food Cost Previsto / 100)
+          // Se delivery è attivo e la pizza è in delivery, il delivery viene aggiunto come costo aggiuntivo
+          // al prezzo base, mantenendo il Food Cost rispettato
+          let recommendedAssetCostPrice = 0;
+          if (totalCost > 0 && foodCostIncidence > 0) {
+            // Calcola il prezzo base rispettando solo il Food Cost
+            const basePrice = totalCost / (foodCostIncidence / 100);
+            
+            if (deliveryEnabled && form.isDelivery) {
+              // Aggiungi il delivery come costo aggiuntivo al prezzo base
+              // Il delivery viene aggiunto come percentuale sul prezzo base
+              recommendedAssetCostPrice = basePrice * (1 + deliveryIncidence / 100);
+            } else {
+              // Senza delivery, usa solo il prezzo base
+              recommendedAssetCostPrice = basePrice;
+            }
+          }
+          
+          // Food Cost attuale (solo materie prime)
+          const currentFoodCost = form.sellingPrice > 0 ? (totalCost / form.sellingPrice) * 100 : 0;
+          
+          return (
+            <div className="space-y-4">
+              {/* Prezzo Consigliato Asset Cost */}
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-[2.5rem] border border-purple-100">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">Prezzo Consigliato Asset Cost</span>
+                  <span className="text-[10px] font-black uppercase text-purple-600 bg-purple-100 px-3 py-1 rounded-full">
+                    Asset Cost {totalVariableIncidence}%
+                  </span>
+                </div>
+                <div className="flex items-baseline space-x-2">
+                  <span className="text-4xl font-black text-black tracking-tight">
+                    €{recommendedAssetCostPrice.toFixed(2)}
+                  </span>
+                  {recommendedAssetCostPrice > 0 && (
+                    <button
+                      onClick={() => setForm({...form, sellingPrice: Math.round(recommendedAssetCostPrice * 2) / 2})}
+                      className="ml-auto bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-black active:scale-95 transition-all"
+                    >
+                      Applica
+                    </button>
+                  )}
+                </div>
+                <p className="text-[9px] text-gray-400 font-bold mt-2">
+                  Calcolato per rispettare Food Cost {foodCostIncidence}% (Asset totale: {totalVariableIncidence}% - Food Cost {foodCostIncidence}% + Packaging {serviceIncidence}% + Sfrido {wasteIncidence}%{deliveryEnabled && form.isDelivery ? ` + Delivery ${deliveryIncidence}%` : ''})
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-black text-white p-5 rounded-3xl text-center">
+                  <span className="text-[9px] font-black uppercase text-gray-400 block mb-1">Prezzo Vendita</span>
+                  <input type="number" step="0.5" className="bg-transparent border-none text-2xl font-black text-white w-full text-center p-0" value={form.sellingPrice || ''} onChange={e => setForm({...form, sellingPrice: parseFloat(e.target.value)})} />
+                </div>
+                <div className="bg-gray-50 p-5 rounded-3xl text-center flex flex-col justify-center">
+                  <span className="text-[9px] font-black uppercase text-gray-400 block mb-1">Food Cost Attuale</span>
+                  <p className="text-2xl font-black text-black">{currentFoodCost.toFixed(1)}%</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
       <div className="p-6 bg-white border-t border-gray-50 safe-area-bottom">
         <button onClick={() => {
           const payload = { ...form, id: editingId || Math.random().toString(36).substr(2,9), category: form.category || 'Generica', components: form.components || [] } as MenuItem;
           if (editingId) onUpdate(payload); else onAdd(payload);
-          setCreationMode(null); setEditingId(null);
+          setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false);
         }} className="w-full bg-black text-white py-5 rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all">Salva Pizza</button>
       </div>
     </div>
   );
 
   return (
-    <div className="space-y-6 pb-12">
+    <>
       {creationMode === 'choice' && renderChoice()}
       {creationMode === 'ai' && (
         <div className="fixed inset-0 z-[160] bg-white flex flex-col p-8 animate-in slide-in-from-right">
@@ -221,6 +436,357 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
       )}
       {missingComps.length > 0 && currentMissingIdx !== -1 && renderWizard()}
       {(creationMode === 'manual' || editingId) && renderForm(!!editingId)}
+      
+      {/* Modal per aggiungere componenti */}
+      {showAddComponentModal && (
+        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center">
+              <h3 className="text-2xl font-black tracking-tight">Aggiungi Componente</h3>
+              <button onClick={() => { 
+                setShowAddComponentModal(false); 
+                setAddComponentSearch(''); 
+                setShowNewIngredientForm(false);
+                setNewIngredientForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
+                setIsAddingNewCategoryIng(false);
+              }} className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors">
+                <X size={20}/>
+              </button>
+            </div>
+            
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Cerca ingrediente, preparazione o pizza..." 
+                className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold" 
+                value={addComponentSearch} 
+                onChange={(e) => setAddComponentSearch(e.target.value)} 
+              />
+            </div>
+            
+            <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+              {/* Pulsante per aggiungere nuovo ingrediente */}
+              {!showNewIngredientForm && (
+                <button
+                  onClick={() => setShowNewIngredientForm(true)}
+                  className="w-full p-4 border-2 border-dashed border-blue-200 rounded-2xl text-blue-600 font-bold text-sm flex items-center justify-center space-x-2 hover:border-blue-300 hover:bg-blue-50 transition-all mb-4"
+                >
+                  <Plus size={16}/> <span>Nuovo Ingrediente</span>
+                </button>
+              )}
+
+              {/* Form per nuovo ingrediente */}
+              {showNewIngredientForm && (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-6 space-y-4 mb-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-black text-sm text-black">Nuovo Ingrediente</h4>
+                    <button onClick={() => { setShowNewIngredientForm(false); setNewIngredientForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' }); setIsAddingNewCategoryIng(false); }} className="text-gray-400 hover:text-gray-600">
+                      <X size={18}/>
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Ingrediente</label>
+                    <input 
+                      placeholder="Es: Farina Tipo 0" 
+                      className="w-full bg-white border-none rounded-2xl p-4 text-sm font-bold" 
+                      value={newIngredientForm.name || ''} 
+                      onChange={e => setNewIngredientForm({...newIngredientForm, name: e.target.value})}
+                      onBlur={e => setNewIngredientForm({...newIngredientForm, name: normalizeText(e.target.value)})}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Categoria</label>
+                    <div className="flex flex-wrap gap-2">
+                      {ingredientCategories.map(cat => (
+                        <button 
+                          key={cat} 
+                          onClick={() => { setNewIngredientForm({...newIngredientForm, category: cat}); setIsAddingNewCategoryIng(false); }}
+                          className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${newIngredientForm.category === cat ? 'bg-black text-white' : 'bg-white text-gray-400'}`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                      <button 
+                        onClick={() => setIsAddingNewCategoryIng(true)}
+                        className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center space-x-1 ${isAddingNewCategoryIng ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-200'}`}
+                      >
+                        <Plus size={12}/> <span>Nuova</span>
+                      </button>
+                    </div>
+                    {isAddingNewCategoryIng && (
+                      <input 
+                        autoFocus
+                        placeholder="Nome nuova categoria..." 
+                        className="w-full bg-white rounded-xl p-4 text-sm font-bold border border-blue-200" 
+                        value={newIngredientForm.category || ''} 
+                        onChange={e => setNewIngredientForm({...newIngredientForm, category: e.target.value})} 
+                      />
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Prezzo (€/kg)</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="0.00" 
+                        className="w-full bg-white border-none rounded-2xl p-4 text-sm font-black text-center" 
+                        value={newIngredientForm.pricePerUnit || ''} 
+                        onChange={e => setNewIngredientForm({...newIngredientForm, pricePerUnit: parseFloat(e.target.value) || 0})} 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Unità</label>
+                      <select 
+                        className="w-full bg-white border-none rounded-2xl p-4 text-sm font-bold" 
+                        value={newIngredientForm.unit || 'kg'} 
+                        onChange={e => setNewIngredientForm({...newIngredientForm, unit: e.target.value as Unit})}
+                      >
+                        <option value="kg">kg</option>
+                        <option value="g">g</option>
+                        <option value="l">l</option>
+                        <option value="ml">ml</option>
+                        <option value="pz">pz</option>
+                        <option value="unit">unit</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Fornitore</label>
+                    <div className="flex space-x-2">
+                      <select 
+                        className="flex-1 bg-white rounded-2xl p-4 text-sm font-bold border-none" 
+                        value={newIngredientForm.supplierId || ''} 
+                        onChange={e => setNewIngredientForm({...newIngredientForm, supplierId: e.target.value})}
+                      >
+                        <option value="">Nessuno...</option>
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                      <button 
+                        onClick={() => setShowSupModal(true)} 
+                        className="bg-black text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-transform"
+                      >
+                        <Plus size={20}/>
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!newIngredientForm.name || !newIngredientForm.category || !newIngredientForm.pricePerUnit) {
+                        alert("Compila tutti i campi obbligatori");
+                        return;
+                      }
+                      const newId = await onAddIngredient(newIngredientForm as Ingredient);
+                      if (newId) {
+                        setForm({
+                          ...form,
+                          components: [...(form.components || []), { id: newId, type: 'ingredient', quantity: 100 }]
+                        });
+                        setShowAddComponentModal(false);
+                        setShowNewIngredientForm(false);
+                        setAddComponentSearch('');
+                        setNewIngredientForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
+                        setIsAddingNewCategoryIng(false);
+                      }
+                    }}
+                    className="w-full py-4 bg-black text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all"
+                  >
+                    Salva e Aggiungi
+                  </button>
+                </div>
+              )}
+
+              {/* Ingredienti esistenti */}
+              {!showNewIngredientForm && (
+                <>
+                <div className="mb-4">
+                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 px-1">Ingredienti</p>
+                  {ingredients
+                  .filter(ing => ing.name.toLowerCase().includes(addComponentSearch.toLowerCase()))
+                  .map(ing => {
+                    const alreadyAdded = form.components?.some(c => c.id === ing.id && c.type === 'ingredient');
+                    return (
+                      <button
+                        key={ing.id}
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            setForm({
+                              ...form,
+                              components: [...(form.components || []), { id: ing.id, type: 'ingredient', quantity: 100 }]
+                            });
+                            setShowAddComponentModal(false);
+                            setAddComponentSearch('');
+                          }
+                        }}
+                        disabled={alreadyAdded}
+                        className={`w-full p-4 rounded-2xl text-left transition-all mb-2 ${
+                          alreadyAdded 
+                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed' 
+                            : 'bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-black text-sm text-black">{ing.name}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{ing.category}</p>
+                          </div>
+                          {alreadyAdded && (
+                            <span className="text-[10px] text-gray-300 font-bold">Già aggiunto</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+
+              {/* Preparazioni */}
+              <div className="mb-4">
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 px-1">Preparazioni</p>
+                {subRecipes
+                  .filter(sub => sub.name.toLowerCase().includes(addComponentSearch.toLowerCase()))
+                  .map(sub => {
+                    const alreadyAdded = form.components?.some(c => c.id === sub.id && c.type === 'subrecipe');
+                    return (
+                      <button
+                        key={sub.id}
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            setForm({
+                              ...form,
+                              components: [...(form.components || []), { id: sub.id, type: 'subrecipe', quantity: 100 }]
+                            });
+                            setShowAddComponentModal(false);
+                            setAddComponentSearch('');
+                          }
+                        }}
+                        disabled={alreadyAdded}
+                        className={`w-full p-4 rounded-2xl text-left transition-all mb-2 ${
+                          alreadyAdded 
+                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed' 
+                            : 'bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-black text-sm text-black">{sub.name}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{sub.category}</p>
+                          </div>
+                          {alreadyAdded && (
+                            <span className="text-[10px] text-gray-300 font-bold">Già aggiunto</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+
+              {/* Pizze (con supporto mezze porzioni) */}
+              <div className="mb-4">
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 px-1">Pizze</p>
+                {menu
+                  .filter(item => item.id !== editingId && item.name.toLowerCase().includes(addComponentSearch.toLowerCase()))
+                  .map(item => {
+                    const alreadyAdded = form.components?.some(c => c.id === item.id && c.type === 'menuitem');
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            setForm({
+                              ...form,
+                              components: [...(form.components || []), { id: item.id, type: 'menuitem', quantity: 0.5 }] // Default mezza porzione
+                            });
+                            setShowAddComponentModal(false);
+                            setAddComponentSearch('');
+                          }
+                        }}
+                        disabled={alreadyAdded}
+                        className={`w-full p-4 rounded-2xl text-left transition-all mb-2 ${
+                          alreadyAdded 
+                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed' 
+                            : 'bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-black text-sm text-black">{item.name}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{item.category}</p>
+                          </div>
+                          {alreadyAdded && (
+                            <span className="text-[10px] text-gray-300 font-bold">Già aggiunto</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+              
+              {!showNewIngredientForm && ingredients.filter(ing => ing.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 &&
+               subRecipes.filter(sub => sub.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 &&
+               menu.filter(item => item.id !== editingId && item.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 && (
+                <div className="text-center py-8 text-gray-400">
+                  <p className="text-sm font-bold">Nessun risultato trovato</p>
+                </div>
+              )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-modal per nuovo fornitore */}
+      {showSupModal && (
+        <div className="fixed inset-0 z-[400] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in zoom-in-95">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h4 className="font-black text-xl tracking-tight">Nuovo Fornitore Rapido</h4>
+              <button onClick={() => { setShowSupModal(false); setSupForm({ deliveryDays: [] }); }} className="bg-gray-100 p-2 rounded-full text-gray-400">
+                <X size={18}/>
+              </button>
+            </div>
+            <div className="space-y-3">
+              <input placeholder="Azienda" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={supForm.name || ''} onChange={e => setSupForm({...supForm, name: e.target.value})} onBlur={e => setSupForm({...supForm, name: normalizeText(e.target.value)})} />
+              <input placeholder="Telefono" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={supForm.phone || ''} onChange={e => setSupForm({...supForm, phone: e.target.value})} />
+            </div>
+            <div className="flex space-x-2 pt-2">
+              <button onClick={() => { setShowSupModal(false); setSupForm({ deliveryDays: [] }); }} className="flex-1 py-4 bg-gray-100 rounded-2xl font-black text-gray-400">Annulla</button>
+              <button 
+                onClick={async () => {
+                  if (!supForm.name || !onAddSupplier) return;
+                  setSupLoading(true);
+                  const id = await onAddSupplier({ 
+                    ...supForm, 
+                    id: '', 
+                    deliveryDays: supForm.deliveryDays || [],
+                    phone: supForm.phone || '',
+                    email: supForm.email || '',
+                    category: supForm.category || 'Generico'
+                  } as Supplier);
+                  if (id) {
+                    setNewIngredientForm({ ...newIngredientForm, supplierId: id });
+                    setShowSupModal(false);
+                    setSupForm({ deliveryDays: [] });
+                  }
+                  setSupLoading(false);
+                }}
+                disabled={supLoading}
+                className="flex-1 py-4 bg-black text-white rounded-2xl font-black shadow-lg disabled:opacity-50"
+              >
+                {supLoading ? 'Salvataggio...' : 'Salva'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="space-y-6 pb-12">
 
       <div className="space-y-4 px-2">
         {/* Category Filters */}
@@ -234,10 +800,76 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
           {categories.map(cat => (
             <button 
               key={cat}
-              onClick={() => setSelectedCategory(cat === selectedCategory ? null : cat)}
-              className={`whitespace-nowrap px-5 py-2.5 rounded-full text-[10px] font-black uppercase transition-all ${selectedCategory === cat ? 'bg-black text-white shadow-xl scale-105' : 'bg-white text-gray-400 border border-gray-100'}`}
+              onClick={() => {
+                if (!editingCategory) {
+                  setSelectedCategory(cat === selectedCategory ? null : cat);
+                }
+              }}
+              onMouseDown={() => {
+                const timer = setTimeout(() => {
+                  setEditingCategory(cat);
+                  setNewCategoryName(cat);
+                }, 500); // 500ms per long press
+                setLongPressTimer(timer);
+              }}
+              onMouseUp={() => {
+                if (longPressTimer) {
+                  clearTimeout(longPressTimer);
+                  setLongPressTimer(null);
+                }
+              }}
+              onMouseLeave={() => {
+                if (longPressTimer) {
+                  clearTimeout(longPressTimer);
+                  setLongPressTimer(null);
+                }
+              }}
+              onTouchStart={() => {
+                const timer = setTimeout(() => {
+                  setEditingCategory(cat);
+                  setNewCategoryName(cat);
+                }, 500);
+                setLongPressTimer(timer);
+              }}
+              onTouchEnd={() => {
+                if (longPressTimer) {
+                  clearTimeout(longPressTimer);
+                  setLongPressTimer(null);
+                }
+              }}
+              className={`whitespace-nowrap px-5 py-2.5 rounded-full text-[10px] font-black uppercase transition-all ${selectedCategory === cat ? 'bg-black text-white shadow-xl scale-105' : 'bg-white text-gray-400 border border-gray-100'} ${editingCategory === cat ? 'ring-2 ring-blue-500' : ''}`}
             >
-              {cat}
+              {editingCategory === cat ? (
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onBlur={(e) => {
+                    const newName = normalizeText(e.target.value);
+                    if (newName && newName !== cat && newName.trim() !== '') {
+                      // Aggiorna tutte le ricette con la vecchia categoria
+                      menu.filter(item => item.category === cat).forEach(item => {
+                        onUpdate({ ...item, category: newName });
+                      });
+                    }
+                    setEditingCategory(null);
+                    setNewCategoryName('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur();
+                    } else if (e.key === 'Escape') {
+                      setEditingCategory(null);
+                      setNewCategoryName('');
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white text-black border-none rounded px-2 py-1 text-[10px] font-black uppercase w-full text-center"
+                  autoFocus
+                />
+              ) : (
+                cat
+              )}
             </button>
           ))}
         </div>
@@ -245,7 +877,7 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
         <div className="relative">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input type="text" placeholder="Cerca pizza..." className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          <button onClick={() => setCreationMode('choice')} className="absolute right-5 top-1/2 -translate-y-1/2 bg-black text-white p-2 rounded-xl shadow-sm"><Plus size={16} /></button>
+          <button onClick={() => { setCreationMode('manual'); setEditingId(null); setForm({ components: [], sellingPrice: 0, category: '' }); setIsAddingNewCategoryForm(false); }} className="absolute right-5 top-1/2 -translate-y-1/2 bg-black text-white p-2 rounded-xl shadow-sm"><Plus size={16} /></button>
         </div>
       </div>
 
@@ -266,14 +898,15 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
                 </div>
               </div>
               <div className="flex flex-col space-y-3">
-                <button onClick={() => { setEditingId(item.id); setForm(item); setCreationMode('manual'); }} className="bg-gray-50 p-3 rounded-2xl text-gray-400 border border-gray-100"><Edit2 size={18} /></button>
+                <button onClick={() => { setEditingId(item.id); setForm(item); setCreationMode('manual'); setIsAddingNewCategoryForm(false); }} className="bg-gray-50 p-3 rounded-2xl text-gray-400 border border-gray-100"><Edit2 size={18} /></button>
                 <button onClick={() => onDelete?.(item.id)} className="bg-red-50 p-3 rounded-2xl text-red-300 border border-red-50"><Trash2 size={18} /></button>
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

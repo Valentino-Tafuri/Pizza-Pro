@@ -9,6 +9,7 @@ import AuthView from './components/AuthView';
 import DashboardView from './components/Views/DashboardView';
 import MenuView from './components/Views/MenuView';
 import LabView from './components/Views/LabView';
+import LabCalculatorView from './components/Views/LabCalculatorView';
 import EconomatoView from './components/Views/EconomatoView';
 import SuppliersView from './components/Views/SuppliersView';
 import StaffView from './components/Views/StaffView';
@@ -82,9 +83,10 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <DashboardView menu={menu} ingredients={ingredients} subRecipes={subRecipes} userData={userData} employees={employees} />;
-      case 'economato': return <EconomatoView ingredients={ingredients} suppliers={suppliers} onUpdate={(i) => handleSave('ingredients', i)} onAdd={(i) => handleSave('ingredients', i)} onDelete={(id) => handleDelete('ingredients', id)} />;
+      case 'economato': return <EconomatoView ingredients={ingredients} suppliers={suppliers} onUpdate={(i) => handleSave('ingredients', i)} onAdd={(i) => handleSave('ingredients', i)} onDelete={(id) => handleDelete('ingredients', id)} onAddSupplier={(s) => handleSave('suppliers', s)} />;
       case 'lab': return <LabView subRecipes={subRecipes} ingredients={ingredients} suppliers={suppliers} onAdd={(sub) => handleSave('subRecipes', sub)} onUpdate={(sub) => handleSave('subRecipes', sub)} onDelete={(id) => handleDelete('subRecipes', id)} onAddIngredient={(ing) => handleSave('ingredients', ing)} />;
-      case 'menu': return <MenuView menu={menu} ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} onAdd={(i) => handleSave('menu', i)} onUpdate={(i) => handleSave('menu', i)} onDelete={(id) => handleDelete('menu', id)} onAddIngredient={(i) => handleSave('ingredients', i)} />;
+      case 'menu': return <MenuView menu={menu} ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} userData={userData} onAdd={(i) => handleSave('menu', i)} onUpdate={(i) => handleSave('menu', i)} onDelete={(id) => handleDelete('menu', id)} onAddIngredient={(i) => handleSave('ingredients', i)} />;
+      case 'laboratorio': return <LabCalculatorView ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} onAdd={(sub) => handleSave('subRecipes', sub)} onUpdate={(sub) => handleSave('subRecipes', sub)} onDelete={(id) => handleDelete('subRecipes', id)} onAddIngredient={(ing) => handleSave('ingredients', ing)} onAddSupplier={(s) => handleSave('suppliers', s)} />;
       case 'suppliers': return <SuppliersView suppliers={suppliers} onSave={(s) => handleSave('suppliers', s)} onDelete={(id) => handleDelete('suppliers', id)} />;
       case 'staff': return <StaffView employees={employees} onSave={(e) => handleSave('employees', e)} onDelete={(id) => handleDelete('employees', id)} />;
       case 'assets': return <AssetsView userData={userData} employees={employees} onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })} />;
@@ -93,8 +95,23 @@ const App: React.FC = () => {
     }
   };
 
+  const getViewTitle = (view: ViewType): string => {
+    const titles: Record<ViewType, string> = {
+      'dashboard': 'DASHBOARD',
+      'economato': 'ECONOMATO',
+      'lab': 'TOPPING',
+      'menu': 'MENU',
+      'laboratorio': 'LABORATORIO',
+      'suppliers': 'FORNITORI',
+      'staff': 'STAFF',
+      'assets': 'COSTI E ASSET',
+      'profile': 'PROFILO UTENTE'
+    };
+    return titles[view] || view.toUpperCase();
+  };
+
   return (
-    <Layout activeView={activeView} setActiveView={setActiveView} title={activeView.toUpperCase()}>
+    <Layout activeView={activeView} setActiveView={setActiveView} title={getViewTitle(activeView)}>
       {dbError && <div className="bg-red-50 p-4 rounded-2xl text-red-600 font-bold text-xs mb-6 flex items-center space-x-2"><AlertCircle size={18}/><span>Errore sincronizzazione cloud.</span></div>}
       {renderView()}
     </Layout>

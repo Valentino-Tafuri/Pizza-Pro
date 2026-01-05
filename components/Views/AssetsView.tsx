@@ -144,6 +144,36 @@ const AssetsView: React.FC<AssetsViewProps> = ({ userData, employees, onUpdateBe
               </div>
             ))}
             
+            {/* Delivery Toggle e Percentuale */}
+            <div className="pt-6 border-t border-gray-50 space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-black text-black uppercase tracking-widest">Delivery</span>
+                  <button
+                    onClick={() => onUpdateBep({ ...bep, deliveryEnabled: !bep.deliveryEnabled })}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${bep.deliveryEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${bep.deliveryEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                  <span className="text-[10px] font-bold text-gray-400">{bep.deliveryEnabled ? 'ON' : 'OFF'}</span>
+                </div>
+              </div>
+              {bep.deliveryEnabled && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-xs font-black text-black uppercase tracking-widest">Costo Delivery</span>
+                    <span className="text-xs font-black bg-gray-50 px-4 py-2 rounded-2xl">{(bep.deliveryIncidence || 0)}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="20" 
+                    className="w-full h-2 bg-gray-100 rounded-full appearance-none cursor-pointer accent-green-500"
+                    value={bep.deliveryIncidence || 0}
+                    onChange={e => onUpdateBep({ ...bep, deliveryIncidence: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              )}
+            </div>
+            
             <div className="pt-6 border-t border-gray-50">
               <div className="flex justify-between items-center bg-gray-50 p-6 rounded-[2rem]">
                 <div>

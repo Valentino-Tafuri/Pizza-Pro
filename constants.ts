@@ -12,7 +12,9 @@ export const INITIAL_USER: UserData = {
     foodCostIncidence: 30,
     serviceIncidence: 5,
     wasteIncidence: 2,
-    averageTicket: 15
+    averageTicket: 15,
+    deliveryEnabled: false,
+    deliveryIncidence: 0
   }
 };
 
