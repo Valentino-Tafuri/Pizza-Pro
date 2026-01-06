@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Utensils, Beaker, Package, Settings, 
   Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User, Calculator,
-  Warehouse, Tag, ScanLine, ClipboardList
+  Warehouse, Tag, ScanBarcode
 } from 'lucide-react';
 import { ViewType } from '../types';
 
@@ -30,9 +30,11 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
 
   // Auto-expand inventario menu when a sub-section is active
   useEffect(() => {
-    if (activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan') {
+    if (activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'scan' ||
+        activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan') {
       setIsInventarioExpanded(true);
-    } else if (activeView !== 'inventario-magazzino' && activeView !== 'inventario-etichette' && activeView !== 'inventario-scan') {
+    } else if (activeView !== 'prep-settings' && activeView !== 'warehouse' && activeView !== 'fifo-labels' && activeView !== 'scan' &&
+               activeView !== 'inventario-magazzino' && activeView !== 'inventario-etichette' && activeView !== 'inventario-scan') {
       setIsInventarioExpanded(false);
     }
   }, [activeView]);
@@ -57,9 +59,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
           icon: Warehouse,
           hasSubmenu: true,
           subItems: [
-            { id: 'inventario-magazzino' as ViewType, label: 'Magazzino', icon: Warehouse },
-            { id: 'inventario-etichette' as ViewType, label: 'Etichette', icon: Tag },
-            { id: 'inventario-scan' as ViewType, label: 'Scan', icon: ScanLine },
+            { id: 'prep-settings' as ViewType, label: 'Attiva Preparazioni', icon: Package },
+            { id: 'warehouse' as ViewType, label: 'Magazzino', icon: Warehouse },
+            { id: 'fifo-labels' as ViewType, label: 'Etichette FIFO', icon: Tag },
+            { id: 'scan' as ViewType, label: 'Scan', icon: ScanBarcode },
           ]
         },
       ]
@@ -103,7 +106,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const isSettingsSubActive = activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers';
-                  const isInventarioSubActive = activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan';
+                  const isInventarioSubActive = activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'scan' ||
+                    activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan';
                   const isActive = activeView === item.id || (item.hasSubmenu && item.id === 'settings' && isSettingsSubActive) || (item.hasSubmenu && item.id === 'inventario' && isInventarioSubActive);
                   const isExpanded = item.hasSubmenu && (
                     (item.id === 'settings' && (isSettingsExpanded || isSettingsSubActive)) ||

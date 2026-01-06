@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { AlertCircle } from 'lucide-react';
 import Layout from './components/Layout';
 import AuthView from './components/AuthView';
@@ -13,9 +13,15 @@ import LabCalculatorView from './components/Views/LabCalculatorView';
 import EconomatoView from './components/Views/EconomatoView';
 import SettingsView from './components/Views/SettingsView';
 import ProfileView from './components/Views/ProfileView';
+import WarehouseView from './components/Views/WarehouseView';
+import FifoLabelsView from './components/Views/FifoLabelsView';
+import ScanView from './components/Views/ScanView';
+import StockAlerts from './components/StockAlerts';
+import PreparationSettingsView from './components/Views/PreparationSettingsView';
 import { syncData, saveData, deleteData } from './services/database';
-import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData } from './types';
+import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement } from './types';
 import { INITIAL_USER } from './constants';
+import { getActivePreparations, PreparationSettings } from './utils/preparationConverter';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
@@ -29,7 +35,16 @@ const App: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [preferments, setPreferments] = useState<any[]>([]);
+  const [preparationSettings, setPreparationSettings] = useState<Map<string, PreparationSettings>>(new Map());
+  const [fifoLabels, setFifoLabels] = useState<FifoLabel[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [userData, setUserData] = useState<UserData>(INITIAL_USER);
+
+  // Crea preparations da subRecipes usando settings
+  const preparations = useMemo(() => 
+    getActivePreparations(subRecipes, preparationSettings),
+    [subRecipes, preparationSettings]
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -65,7 +80,18 @@ const App: React.FC = () => {
     const unsubSup = syncData(user.uid, 'suppliers', setSuppliers);
     const unsubEmp = syncData(user.uid, 'employees', setEmployees);
     const unsubPref = syncData(user.uid, 'preferments', setPreferments);
-    return () => { unsubIng(); unsubSub(); unsubMenu(); unsubSup(); unsubEmp(); unsubPref(); };
+    const unsubSettings = syncData(user.uid, 'preparationSettings', (data: PreparationSettings[]) => {
+      console.log('[App] PreparationSettings sincronizzate:', data.length);
+      const map = new Map<string, PreparationSettings>();
+      data.forEach(item => map.set(item.id, item));
+      setPreparationSettings(map);
+    });
+    const unsubLabels = syncData(user.uid, 'fifoLabels', setFifoLabels);
+    const unsubMov = syncData(user.uid, 'stockMovements', setStockMovements);
+    return () => { 
+      unsubIng(); unsubSub(); unsubMenu(); unsubSup(); unsubEmp(); unsubPref();
+      unsubSettings(); unsubLabels(); unsubMov();
+    };
   }, [user]);
 
   if (authLoading) return <div className="min-h-screen bg-white flex items-center justify-center"><div className="w-8 h-8 border-4 border-black/10 border-t-black rounded-full animate-spin" /></div>;
@@ -77,8 +103,14 @@ const App: React.FC = () => {
     setUserData(updated);
     if (user) await setDoc(doc(db, `users/${user.uid}`), updated);
   };
+  
+  // Definire handleSave PRIMA delle altre funzioni che lo usano
   const handleSave = async (col: string, item: any) => {
+    if (!user) throw new Error("User not available");
     console.log(`[App] handleSave chiamato per collezione: ${col}`, item);
+    if (col === 'subRecipes' && item.fifoLabel !== undefined) {
+      console.log(`[App] ⚠️ SubRecipe con fifoLabel=${item.fifoLabel} salvato:`, item.name);
+    }
     try {
       const result = await saveData(user.uid, col, item);
       console.log(`[App] Salvataggio completato con ID: ${result}`);
@@ -88,16 +120,239 @@ const App: React.FC = () => {
       throw error;
     }
   };
-  const handleDelete = async (col: string, id: string) => await deleteData(user.uid, col, id);
+  
+  const handleDelete = async (col: string, id: string) => {
+    if (!user) return;
+    await deleteData(user.uid, col, id);
+  };
+
+  // Handler per toggle preparazione
+  const handleTogglePreparation = async (subRecipeId: string, isActive: boolean) => {
+    if (!user) return;
+    
+    const current = preparationSettings.get(subRecipeId) || { 
+      id: subRecipeId,
+      isActive: false, 
+      minStock: 5, 
+      currentStock: 0 
+    };
+    
+    const updated: PreparationSettings = { ...current, isActive };
+    
+    await handleSave('preparationSettings', updated);
+    
+    setPreparationSettings(prev => new Map(prev).set(subRecipeId, updated));
+  };
+
+  // Handler per update stock
+  const handleUpdateStock = async (prepId: string, newStock: number, note: string) => {
+    if (!user) return;
+    
+    const current = preparationSettings.get(prepId) || { 
+      id: prepId,
+      isActive: false, 
+      minStock: 5, 
+      currentStock: 0 
+    };
+    
+    const oldStock = current.currentStock;
+    const updated: PreparationSettings = { ...current, currentStock: newStock };
+    
+    await handleSave('preparationSettings', updated);
+    
+    setPreparationSettings(prev => new Map(prev).set(prepId, updated));
+    
+    // Crea movimento stock con nota
+    const prep = preparations.find(p => p.id === prepId);
+    if (prep) {
+      const userName = `${userData.firstName} ${userData.lastName}`;
+      const movementType = newStock > oldStock ? 'load' : 'unload';
+      const quantity = Math.abs(newStock - oldStock);
+      
+      await handleSave('stockMovements', {
+        id: `mov_${Date.now()}`,
+        type: movementType,
+        preparationId: prepId,
+        preparationName: prep.name,
+        quantity: quantity,
+        userId: user.uid,
+        userName: userName,
+        timestamp: Timestamp.now(),
+        notes: note || `Stock modificato da ${oldStock} a ${newStock}`
+      });
+    }
+  };
+
+  const handleGenerateLabels = async (labels: FifoLabel[]) => {
+    if (!user) {
+      console.error('[App] handleGenerateLabels: user non disponibile');
+      throw new Error('Utente non autenticato');
+    }
+    
+    if (!labels || labels.length === 0) {
+      console.error('[App] handleGenerateLabels: nessuna etichetta da salvare');
+      throw new Error('Nessuna etichetta da salvare');
+    }
+    
+    console.log('[App] handleGenerateLabels chiamato con', labels.length, 'etichette');
+    
+    const userName = `${userData.firstName} ${userData.lastName}`;
+    
+    try {
+      // Salva tutte le labels con createdBy
+      for (let i = 0; i < labels.length; i++) {
+        const label = labels[i];
+        console.log(`[App] Salvataggio etichetta ${i + 1}/${labels.length}:`, label.id);
+        
+        const labelWithUser = {
+          ...label,
+          createdBy: user.uid,
+          createdAt: Timestamp.fromDate(new Date(label.createdAt)),
+          expiryDate: Timestamp.fromDate(new Date(label.expiryDate))
+        };
+        
+        await handleSave('fifoLabels', labelWithUser);
+        console.log(`[App] Etichetta ${i + 1} salvata con successo`);
+      }
+      
+      // Aggiorna stock preparazione
+      const prepId = labels[0].preparationId;
+      const prep = preparations.find(p => p.id === prepId);
+      
+      if (prep) {
+        console.log('[App] Aggiornamento stock per preparazione:', prep.name, 'da', prep.currentStock, 'a', prep.currentStock + labels.length);
+        const newStock = prep.currentStock + labels.length;
+        await handleUpdateStock(prepId, newStock, `Carico automatico da ${labels.length} etichetta${labels.length > 1 ? 'e' : ''} FIFO generate`);
+        
+        // Crea movimento carico
+        const movementId = `mov_${Date.now()}`;
+        await handleSave('stockMovements', {
+          id: movementId,
+          type: 'load' as const,
+          preparationId: prepId,
+          preparationName: prep.name,
+          quantity: labels.length,
+          userId: user.uid,
+          userName: userName,
+          timestamp: Timestamp.now()
+        });
+        console.log('[App] Movimento carico creato:', movementId);
+      } else {
+        console.warn('[App] Preparazione non trovata per ID:', prepId);
+      }
+      
+      console.log('[App] ✅ Tutte le etichette generate e salvate con successo');
+    } catch (error) {
+      console.error('[App] ❌ Errore in handleGenerateLabels:', error);
+      throw error;
+    }
+  };
+
+  const handleScanLabel = async (labelId: string, userId: string) => {
+    if (!user) return;
+    
+    // Trova label
+    const label = fifoLabels.find(l => l.id === labelId);
+    if (!label) {
+      alert('❌ Etichetta non trovata!');
+      return;
+    }
+    
+    if (label.status !== 'active') {
+      alert(label.status === 'consumed' ? '⚠️ Etichetta già usata!' : '⚠️ Etichetta non valida!');
+      return;
+    }
+    
+    // Check scadenza
+    const expiryDate = label.expiryDate?.toDate?.() || new Date(label.expiryDate);
+    if (expiryDate < new Date()) {
+      alert('⚠️ PRODOTTO SCADUTO! Non utilizzare.');
+      await handleSave('fifoLabels', {
+        ...label,
+        status: 'expired',
+        expiryDate: label.expiryDate
+      });
+      return;
+    }
+    
+    // Scarica stock
+    const prep = preparations.find(p => p.id === label.preparationId);
+    if (prep && prep.currentStock > 0) {
+      await handleUpdateStock(prep.id, prep.currentStock - 1, `Scarico automatico da scan etichetta FIFO`);
+      
+      const userName = `${userData.firstName} ${userData.lastName}`;
+      
+      // Aggiorna label
+      await handleSave('fifoLabels', {
+        ...label,
+        status: 'consumed',
+        consumedAt: Timestamp.now(),
+        consumedBy: userName,
+        expiryDate: label.expiryDate
+      });
+      
+      // Crea movimento scarico
+      await handleSave('stockMovements', {
+        id: `mov_${Date.now()}`,
+        type: 'unload' as const,
+        preparationId: prep.id,
+        preparationName: prep.name,
+        quantity: 1,
+        userId: user.uid,
+        userName: userName,
+        timestamp: Timestamp.now(),
+        labelId: label.id
+      });
+      
+      alert(`✅ ${prep.name} scaricato con successo!`);
+    }
+  };
 
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <DashboardView menu={menu} ingredients={ingredients} subRecipes={subRecipes} userData={userData} employees={employees} />;
       case 'economato': return <EconomatoView ingredients={ingredients} suppliers={suppliers} onUpdate={(i) => handleSave('ingredients', i)} onAdd={(i) => handleSave('ingredients', i)} onDelete={(id) => handleDelete('ingredients', id)} onAddSupplier={(s) => handleSave('suppliers', s)} />;
-      case 'lab': return <LabView subRecipes={subRecipes} ingredients={ingredients} suppliers={suppliers} onAdd={(sub) => handleSave('subRecipes', sub)} onUpdate={(sub) => handleSave('subRecipes', sub)} onDelete={(id) => handleDelete('subRecipes', id)} onAddIngredient={(ing) => handleSave('ingredients', ing)} />;
-      case 'inventario-magazzino': return <div className="p-6"><h2 className="text-2xl font-black mb-4">Magazzino</h2><p className="text-gray-500">Gestione magazzino</p></div>;
-      case 'inventario-etichette': return <div className="p-6"><h2 className="text-2xl font-black mb-4">Etichette</h2><p className="text-gray-500">Gestione etichette FIFO</p></div>;
-      case 'inventario-scan': return <div className="p-6"><h2 className="text-2xl font-black mb-4">Scan</h2><p className="text-gray-500">Scansione prodotti</p></div>;
+      case 'lab': return <LabView 
+        subRecipes={subRecipes} 
+        ingredients={ingredients} 
+        suppliers={suppliers} 
+        onAdd={(sub) => handleSave('subRecipes', sub)} 
+        onUpdate={(sub) => handleSave('subRecipes', sub)} 
+        onDelete={(id) => handleDelete('subRecipes', id)} 
+        onAddIngredient={(ing) => handleSave('ingredients', ing)} 
+      />;
+      case 'inventario-magazzino':
+      case 'warehouse': 
+        return <WarehouseView
+          ingredients={ingredients} 
+          preparations={preparations.filter(p => p.isActive)}
+          onUpdateStock={handleUpdateStock}
+          onToggleActive={handleTogglePreparation}
+        />;
+      case 'inventario-etichette':
+      case 'fifo-labels': 
+        const activePreparations = preparations.filter(p => p.isActive);
+        console.log('[App] Rendering FifoLabelsView:', {
+          totalPreparations: preparations.length,
+          activePreparations: activePreparations.length,
+          activePreparationsList: activePreparations.map(p => ({ name: p.name, isActive: p.isActive, id: p.id }))
+        });
+        return <FifoLabelsView 
+          preparations={activePreparations}
+          onGenerateLabels={handleGenerateLabels}
+        />;
+      case 'inventario-scan':
+      case 'scan': 
+        return <ScanView 
+          preparations={preparations}
+          fifoLabels={fifoLabels}
+          stockMovements={stockMovements}
+          currentUser={{ 
+            id: user.uid, 
+            name: `${userData.firstName} ${userData.lastName}` 
+          }}
+          onScanLabel={handleScanLabel}
+        />;
       case 'menu': return <MenuView menu={menu} ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} userData={userData} onAdd={(i) => handleSave('menu', i)} onUpdate={(i) => handleSave('menu', i)} onDelete={(id) => handleDelete('menu', id)} onAddIngredient={(i) => handleSave('ingredients', i)} />;
       case 'laboratorio': return <LabCalculatorView ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} preferments={preferments} onAdd={(sub) => handleSave('subRecipes', sub)} onUpdate={(sub) => handleSave('subRecipes', sub)} onDelete={(id) => handleDelete('subRecipes', id)} onAddIngredient={(ing) => handleSave('ingredients', ing)} onAddSupplier={(s) => handleSave('suppliers', s)} />;
       case 'settings': return <SettingsView 
@@ -170,6 +425,10 @@ const App: React.FC = () => {
         onDeletePreferment={(id) => handleDelete('preferments', id)} 
         initialSubSection="suppliers"
       />;
+      case 'prep-settings': return <PreparationSettingsView 
+        preparations={preparations}
+        onToggleActive={handleTogglePreparation}
+      />;
       case 'profile': return <ProfileView userData={userData} onUpdate={handleUpdateUserData} onSignOut={handleSignOut} />;
       default: return <DashboardView menu={menu} ingredients={ingredients} subRecipes={subRecipes} userData={userData} employees={employees} />;
     }
@@ -186,6 +445,10 @@ const App: React.FC = () => {
       'inventario-magazzino': 'MAGAZZINO',
       'inventario-etichette': 'ETICHETTE',
       'inventario-scan': 'SCAN',
+      'warehouse': 'MAGAZZINO',
+      'fifo-labels': 'ETICHETTE FIFO',
+      'scan': 'SCAN',
+      'prep-settings': 'ATTIVA PREPARAZIONI',
       'settings': 'IMPOSTAZIONI',
       'settings-prefermenti': 'PREFERMENTI',
       'settings-assets': 'COSTI E ASSET',
@@ -199,6 +462,11 @@ const App: React.FC = () => {
   return (
     <Layout activeView={activeView} setActiveView={setActiveView} title={getViewTitle(activeView)}>
       {dbError && <div className="bg-red-50 p-4 rounded-2xl text-red-600 font-bold text-xs mb-6 flex items-center space-x-2"><AlertCircle size={18}/><span>Errore sincronizzazione cloud.</span></div>}
+      <StockAlerts 
+        preparations={preparations}
+        ingredients={ingredients}
+        onNavigateToSuppliers={() => setActiveView('settings-suppliers')}
+      />
       {renderView()}
     </Layout>
   );

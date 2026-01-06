@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Plus, X, Edit2, Trash2, Scale, Database, ChevronRight, 
   BrainCircuit, ClipboardList, Loader2, AlertTriangle, Truck, Check, 
-  Calendar, Sparkles, Phone, ChefHat, Save, Wand2, Wand
+  Calendar, Sparkles, Phone, ChefHat, Save, Wand2, Wand, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { SubRecipe, Ingredient, ComponentUsage, Unit, Supplier } from '../../types';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
@@ -929,6 +929,38 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
                 </div>
                 <div className="flex mt-4 space-x-8">
                   <div><p className="text-[9px] uppercase text-gray-300 font-black">Costo / KG</p><p className="text-lg font-black text-green-600">€ {cost.toFixed(2)}</p></div>
+                </div>
+                {/* Switch Etichetta FIFO */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ETICHETTA FIFO</span>
+                      <span className="text-xs font-black text-black">Crea Etichetta FIFO</span>
+                    </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const newFifoLabel = !sub.fifoLabel;
+                        const updated = { ...sub, fifoLabel: newFifoLabel };
+                        console.log('[LabView] Switch FIFO cliccato:', updated.name, 'fifoLabel:', newFifoLabel);
+                        try {
+                          await onUpdate(updated);
+                          console.log('[LabView] SubRecipe aggiornato con successo');
+                        } catch (error) {
+                          console.error('[LabView] Errore aggiornamento:', error);
+                          alert(`❌ Errore: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+                        }
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      {sub.fifoLabel ? (
+                        <ToggleRight className="text-green-600" size={24} />
+                      ) : (
+                        <ToggleLeft size={24} className="text-gray-400" />
+                      )}
+                      <span className="text-[10px] font-bold text-gray-400">{sub.fifoLabel ? 'ON' : 'OFF'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="flex flex-col space-y-3">

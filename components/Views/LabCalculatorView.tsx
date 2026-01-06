@@ -456,17 +456,24 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       return;
     }
 
-    // Verifica che ci siano farine selezionate
-    if (flourSelections.length === 0) {
-      alert('Aggiungi almeno una farina alla composizione');
+    // Verifica che ci siano farine selezionate in almeno una sezione
+    const hasFlourInComposition = flourSelections.length > 0;
+    const hasFlourInPreferment = usePreferment && prefFlourSelections.length > 0;
+    const hasFlourInAutolyse = useAutolyse && autolyseFlourSelections.length > 0;
+    const hasFlourInRemaining = useClosingFlour && remainingFlourSelections.length > 0;
+    
+    if (!hasFlourInComposition && !hasFlourInPreferment && !hasFlourInAutolyse && !hasFlourInRemaining) {
+      alert('Aggiungi almeno una farina alla composizione (Composizione, Prefermento, Autolisi o Chiusura)');
       return;
     }
 
-    // Verifica che le percentuali sommino a 100%
-    const totalPercentage = flourSelections.reduce((sum, f) => sum + f.percentage, 0);
-    if (totalPercentage !== 100) {
-      alert(`Le percentuali delle farine devono sommare esattamente a 100% (attuale: ${totalPercentage}%)`);
-      return;
+    // Verifica che le percentuali sommino a 100% solo se ci sono farine nella composizione principale
+    if (flourSelections.length > 0) {
+      const totalPercentage = flourSelections.reduce((sum, f) => sum + f.percentage, 0);
+      if (totalPercentage !== 100) {
+        alert(`Le percentuali delle farine nella composizione devono sommare esattamente a 100% (attuale: ${totalPercentage}%)`);
+        return;
+      }
     }
 
     // Verifica che tutte le farine selezionate esistano
