@@ -186,29 +186,136 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
     }
   };
 
-  // CSV Import functions
-  const parseCSV = (text: string): any[] => {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length === 0) return [];
+  // CSV Import functions - Header mappings per parsing flessibile
+  const headerMappings: Record<string, string[]> = {
+    categoria: ['categoria', 'category', 'cat'],
+    nome_portata: ['nome_portata', 'nome portata', 'nome', 'name', 'piatto', 'portata'],
+    descrizione: ['descrizione', 'description', 'desc', 'descrizione portata'],
+    prezzo: ['prezzo', 'price', 'costo', 'prezzo vendita'],
+    topping_collegato: ['topping_collegato', 'topping collegato', 'topping', 'ricetta', 'subrecipe'],
+    disponibile: ['disponibile', 'disponibilita', 'available', 'attivo', 'active'],
+    allergeni: ['allergeni', 'allergens', 'allergies', 'allergie']
+  };
+
+  const normalizeHeader = (header: string): string => {
+    const normalized = header.toLowerCase().trim().replace(/[_\s]+/g, '_');
     
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const expectedHeaders = ['categoria', 'nome_portata', 'descrizione', 'prezzo', 'topping_collegato', 'disponibile', 'allergeni'];
-    
-    // Validate headers
-    const missingHeaders = expectedHeaders.filter(h => !headers.includes(h));
-    if (missingHeaders.length > 0) {
-      throw new Error(`Header mancanti: ${missingHeaders.join(', ')}`);
+    // Cerca corrispondenza nelle mappature
+    for (const [standardKey, variants] of Object.entries(headerMappings)) {
+      const normalizedVariants = variants.map(v => v.toLowerCase().replace(/[_\s]+/g, '_'));
+      if (normalizedVariants.includes(normalized) || normalized.includes(standardKey)) {
+        return standardKey;
+      }
     }
     
-    const data = [];
+    return normalized;
+  };
+
+  const validateCSVHeaders = (headers: string[]) => {
+    const requiredHeaders = ['categoria', 'nome_portata', 'prezzo'];
+    const normalizedHeaders = headers.map(normalizeHeader);
+    
+    const missingHeaders = requiredHeaders.filter(
+      required => !normalizedHeaders.includes(required)
+    );
+    
+    return {
+      valid: missingHeaders.length === 0,
+      missing: missingHeaders,
+      found: headers,
+      normalized: normalizedHeaders
+    };
+  };
+
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result.map(v => v.replace(/^"|"$/g, ''));
+  };
+
+  const parseCSV = (text: string): CSVRow[] => {
+    // Rimuovi BOM se presente
+    if (text.charCodeAt(0) === 0xFEFF) {
+      text = text.slice(1);
+    }
+
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) {
+      throw new Error('Il file CSV è vuoto');
+    }
+    
+    // Parse prima riga (header) con gestione virgolette
+    const rawHeaders = parseCSVLine(lines[0]);
+    const normalizedHeaders = rawHeaders.map(normalizeHeader);
+    
+    // Valida header
+    const validation = validateCSVHeaders(rawHeaders);
+    if (!validation.valid) {
+      const errorMessage = `Header CSV non validi
+
+❌ Header obbligatori mancanti: ${validation.missing.join(', ')}
+
+✓ Header trovati nel file: ${rawHeaders.join(', ')}
+
+💡 Suggerimento:
+Scarica il template CSV di esempio e verifica che il tuo file 
+contenga gli stessi header nella prima riga.
+
+Header richiesti:
+• categoria (obbligatorio)
+• nome_portata o nome (obbligatorio)
+• prezzo (obbligatorio)
+• descrizione (opzionale)
+• topping_collegato o topping (opzionale)
+• disponibile (opzionale)
+• allergeni (opzionale)`;
+      throw new Error(errorMessage);
+    }
+    
+    // Crea mappa per accesso rapido alle colonne
+    const headerMap = new Map<string, number>();
+    rawHeaders.forEach((header, idx) => {
+      const normalized = normalizeHeader(header);
+      if (!headerMap.has(normalized)) {
+        headerMap.set(normalized, idx);
+      }
+    });
+    
+    const data: CSVRow[] = [];
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      if (values.length < headers.length) continue;
+      const values = parseCSVLine(lines[i]);
+      if (values.length === 0 || values.every(v => !v.trim())) continue;
       
-      const row: any = {};
-      headers.forEach((header, idx) => {
-        row[header] = values[idx] || '';
+      const row: CSVRow = {};
+      
+      // Mappa i valori usando gli header normalizzati
+      headerMap.forEach((colIndex, normalizedHeader) => {
+        if (values[colIndex] !== undefined) {
+          row[normalizedHeader as keyof CSVRow] = values[colIndex];
+        }
       });
+      
       data.push(row);
     }
     
@@ -222,28 +329,46 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const text = e.target?.result as string;
+        let text = e.target?.result as string;
+        
+        // Rimuovi BOM se presente
+        if (text.charCodeAt(0) === 0xFEFF) {
+          text = text.slice(1);
+        }
+        
         const parsed = parseCSV(text);
         
         if (parsed.length === 0) {
-          alert('Il file CSV è vuoto o non valido');
+          alert('Il file CSV non contiene dati validi.\n\nVerifica che ci siano righe di dati oltre all\'header.');
           return;
         }
         
         setCsvData(parsed);
         
         // Check for missing toppings
-        const toppingsInCsv = new Set(parsed.map(row => row.topping_collegato?.trim()).filter(Boolean));
+        const toppingsInCsv = new Set(
+          parsed
+            .map(row => row.topping_collegato?.trim())
+            .filter(Boolean)
+        );
         const existingToppingNames = new Set(subRecipes.map(sr => sr.name.toLowerCase()));
         
         const missing: {name: string; usedIn: {name: string; price: number}[]}[] = [];
         
         toppingsInCsv.forEach(toppingName => {
-          if (!existingToppingNames.has(toppingName.toLowerCase())) {
+          if (toppingName && !existingToppingNames.has(toppingName.toLowerCase())) {
             const usedIn = parsed
-              .filter(row => row.topping_collegato?.trim().toLowerCase() === toppingName.toLowerCase())
-              .map(row => ({ name: row.nome_portata, price: parseFloat(row.prezzo) || 0 }));
-            missing.push({ name: toppingName, usedIn });
+              .filter(row => {
+                const rowTopping = row.topping_collegato?.trim().toLowerCase() || '';
+                return rowTopping === toppingName.toLowerCase();
+              })
+              .map(row => ({ 
+                name: row.nome_portata || 'Sconosciuto', 
+                price: parseFloat(row.prezzo?.replace(',', '.') || '0') || 0 
+              }));
+            if (usedIn.length > 0) {
+              missing.push({ name: toppingName, usedIn });
+            }
           }
         });
         
@@ -255,10 +380,18 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
           setCsvImportMode('preview');
         }
       } catch (error) {
-        alert(`Errore nel parsing del CSV: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+        const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto nel parsing del CSV';
+        
+        // Mostra dialog di errore migliorato
+        alert(errorMessage);
       }
     };
-    reader.readAsText(file);
+    
+    reader.onerror = () => {
+      alert('❌ Errore nella lettura del file.\n\nAssicurati che il file non sia corrotto e riprova.');
+    };
+    
+    reader.readAsText(file, 'UTF-8');
   };
 
   const handleCreateMissingTopping = async () => {
@@ -290,7 +423,9 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
 
   const handleConfirmImport = () => {
     const existingToppingNames = new Map(subRecipes.map(sr => [sr.name.toLowerCase(), sr.id]));
-    const existingCategories = new Set(categories);
+    
+    let importedCount = 0;
+    let skippedCount = 0;
     
     csvData.forEach(row => {
       const toppingName = row.topping_collegato?.trim();
@@ -298,9 +433,14 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
       
       const category = row.categoria?.trim() || 'Generica';
       const name = normalizeText(row.nome_portata?.trim() || '');
-      const price = parseFloat(row.prezzo) || 0;
+      const priceStr = row.prezzo?.replace(',', '.') || '0';
+      const price = parseFloat(priceStr);
       
-      if (!name || price <= 0) return;
+      // Valida dati obbligatori
+      if (!name || price <= 0 || isNaN(price)) {
+        skippedCount++;
+        return;
+      }
       
       const menuItem: MenuItem = {
         id: Math.random().toString(36).substr(2, 9),
@@ -308,13 +448,20 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
         category,
         sellingPrice: price,
         components: toppingId ? [{ id: toppingId as string, type: 'subrecipe' as const, quantity: 1 }] : [],
-        isDelivery: row.disponibile?.toLowerCase().includes('delivery') || false
+        isDelivery: row.disponibile?.toLowerCase().includes('delivery') || row.disponibile?.toLowerCase().includes('si') || false
       };
       
       onAdd(menuItem);
+      importedCount++;
     });
     
-    alert(`✅ Import completato! ${csvData.length} portata${csvData.length > 1 ? 'e' : ''} importata${csvData.length > 1 ? 'e' : ''}.`);
+    let message = `✅ Import completato!\n\n`;
+    message += `• ${importedCount} portata${importedCount > 1 ? 'e' : ''} importata${importedCount > 1 ? 'e' : ''}`;
+    if (skippedCount > 0) {
+      message += `\n• ${skippedCount} riga${skippedCount > 1 ? 'e' : ''} saltata${skippedCount > 1 ? 'e' : ''} (dati non validi)`;
+    }
+    
+    alert(message);
     setCsvImportMode(null);
     setCsvData([]);
     setMissingToppings([]);
@@ -323,15 +470,31 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
   const handleDownloadExampleCSV = () => {
     const exampleData = [
       ['categoria', 'nome_portata', 'descrizione', 'prezzo', 'topping_collegato', 'disponibile', 'allergeni'],
-      ['Pizze', 'Margherita', 'Pomodoro, mozzarella, basilico', '8.50', 'Pomodoro fresco', 'Sì', 'Latte'],
-      ['Pizze', 'Marinara', 'Pomodoro, aglio, origano', '7.00', '', 'Sì', ''],
-      ['Pizze', 'Carbonara', 'Pancetta, uova, pecorino', '12.00', 'Carbonara', 'Sì', 'Latte, Uova'],
-      ['Focacce', 'Focaccia classica', 'Olio, sale, rosmarino', '5.00', '', 'Sì', ''],
-      ['Focacce', 'Focaccia pomodoro', 'Pomodoro, origano', '6.50', 'Pomodoro fresco', 'Sì', ''],
-      ['Panini', 'Panino Carbonara', 'Pancetta, uova, pecorino', '8.00', 'Carbonara', 'Delivery', 'Latte, Uova'],
+      ['Pizze Classiche', 'Margherita', 'Pomodoro mozzarella e basilico', '8.50', 'Margherita', 'Sì', 'Glutine;Lattosio'],
+      ['Pizze Classiche', 'Marinara', 'Pomodoro aglio e origano', '7.00', '', 'Sì', 'Glutine'],
+      ['Pizze Speciali', 'Carbonara', 'Pancetta uova e pecorino', '12.00', 'Carbonara', 'Sì', 'Glutine;Latte;Uova'],
+      ['Focacce', 'Focaccia classica', 'Olio sale e rosmarino', '5.00', '', 'Sì', 'Glutine'],
+      ['Focacce', 'Focaccia pomodoro', 'Pomodoro e origano', '6.50', 'Pomodoro fresco', 'Sì', 'Glutine'],
+      ['Panini', 'Panino Carbonara', 'Pancetta uova e pecorino', '8.00', 'Carbonara', 'Sì', 'Glutine;Latte;Uova'],
+      ['Antipasti', 'Bruschetta', 'Pomodoro fresco su pane', '5.00', 'Bruschetta', 'Sì', 'Glutine'],
     ];
 
-    const csvContent = exampleData.map(row => row.join(',')).join('\n');
+    // Formatta correttamente i valori con virgolette dove necessario
+    const formatCSVRow = (row: string[]): string => {
+      return row.map(cell => {
+        // Se contiene virgola, virgolette o newline, avvolgi in virgolette
+        if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+          return `"${cell.replace(/"/g, '""')}"`;
+        }
+        return cell;
+      }).join(',');
+    };
+
+    const csvContent = [
+      formatCSVRow(exampleData[0]),
+      ...exampleData.slice(1).map(row => formatCSVRow(row))
+    ].join('\n');
+    
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM per Excel
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -342,6 +505,7 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const renderChoice = () => (

@@ -4,6 +4,7 @@ import { Ingredient, SubRecipe, ComponentUsage, Supplier, Unit } from '../../typ
 import { normalizeText } from '../../utils/textUtils';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
 import { Preferment } from './PrefermentiView';
+import AdvancedDoughCalculator from '../DoughCalculator/AdvancedDoughCalculator';
 
 interface LabCalculatorViewProps {
   ingredients: Ingredient[];
@@ -2021,7 +2022,120 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       </div>
 
       {/* Calcolatore Popup */}
-      {showCalculator && renderCalculator()}
+      {showCalculator && (
+        <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
+          <div className="px-6 pt-12 pb-4 flex justify-between items-center border-b border-gray-50">
+            <h3 className="font-black text-2xl tracking-tight">
+              {editingId ? 'Modifica Impasto' : 'Calcolatore Avanzato Impasti'}
+            </h3>
+            <button 
+              onClick={() => {
+                setShowCalculator(false);
+                setEditingId(null);
+              }} 
+              className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors"
+            >
+              <X size={20}/>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6">
+            <AdvancedDoughCalculator
+              ingredients={ingredients}
+              preferments={preferments}
+              onSave={async (recipeData) => {
+                // Converti risultato calcolatore in SubRecipe
+                const calcResult = recipeData.calculation;
+                if (!calcResult) return;
+                
+                // Crea componenti dalla ricetta calcolata
+                const components: ComponentUsage[] = [];
+                
+                // Aggiungi farine da tutte le fasi
+                const allFlours = new Map<string, number>();
+                
+                // Pre-fermento farine
+                if (calcResult.preferment) {
+                  calcResult.preferment.flourBreakdown.forEach(flour => {
+                    const existing = allFlours.get(flour.flourId) || 0;
+                    allFlours.set(flour.flourId, existing + flour.amount);
+                  });
+                }
+                
+                // Autolisi farine
+                if (calcResult.autolysis) {
+                  calcResult.autolysis.flourBreakdown.forEach(flour => {
+                    const existing = allFlours.get(flour.flourId) || 0;
+                    allFlours.set(flour.flourId, existing + flour.amount);
+                  });
+                }
+                
+                // Chiusura farine
+                if (calcResult.closure.flourBreakdown && calcResult.closure.flourBreakdown.length > 0) {
+                  calcResult.closure.flourBreakdown.forEach(flour => {
+                    const existing = allFlours.get(flour.flourId) || 0;
+                    allFlours.set(flour.flourId, existing + flour.amount);
+                  });
+                }
+                
+                // Converti in ComponentUsage
+                allFlours.forEach((amount, flourId) => {
+                  if (amount > 0) { // Solo se la quantità è > 0
+                    components.push({ id: flourId, type: 'ingredient', quantity: amount });
+                  }
+                });
+                
+                // Aggiungi ingredienti aggiuntivi
+                if (calcResult.closure.additionalIngredients && calcResult.closure.additionalIngredients.length > 0) {
+                  calcResult.closure.additionalIngredients.forEach(ing => {
+                    if (ing.amount > 0) { // Solo se la quantità è > 0
+                      components.push({ id: ing.ingredientId, type: 'ingredient', quantity: ing.amount });
+                    }
+                  });
+                }
+                
+                // Verifica che ci sia almeno un componente
+                if (components.length === 0) {
+                  alert('⚠️ Impossibile salvare: la ricetta non contiene ingredienti. Aggiungi almeno una farina.');
+                  return;
+                }
+                
+                // Aggiungi sale, lievito, olio, malto come ingredienti se necessario
+                // Nota: questi potrebbero non essere ingredienti dell'economato, 
+                // quindi per ora li saltiamo. Se necessario, possono essere aggiunti come ingredienti aggiuntivi.
+                
+                // Crea SubRecipe
+                const subRecipe: SubRecipe = {
+                  id: editingId || Math.random().toString(36).substr(2, 9),
+                  name: recipeData.name || `Impasto ${recipeData.hydration}%`,
+                  category: recipeData.category || 'Panificazione',
+                  components: components,
+                  initialWeight: calcResult.totalWeight / 1000,
+                  yieldWeight: calcResult.totalWeight / 1000,
+                  portionWeight: portionWeight
+                };
+                
+                try {
+                  if (editingId && onUpdate) {
+                    await onUpdate(subRecipe);
+                  } else {
+                    await onAdd(subRecipe);
+                  }
+                  
+                  setShowCalculator(false);
+                  setEditingId(null);
+                  alert('✅ Ricetta salvata con successo!');
+                } catch (error) {
+                  console.error('Errore nel salvataggio:', error);
+                  alert(`❌ Errore nel salvataggio: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+      
+      {/* Mantieni vecchio calcolatore commentato per riferimento */}
+      {/* {showCalculator && renderCalculator()} */}
 
       {/* Form Manuale */}
       {showManualForm && !showCalculator && renderForm()}
