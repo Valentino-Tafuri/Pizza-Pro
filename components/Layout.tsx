@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Utensils, Beaker, Package, Settings, 
   Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User, Calculator,
-  Warehouse, Tag, ScanBarcode
+  Warehouse, Tag, ScanBarcode, TrendingUp, Star, MapPin
 } from 'lucide-react';
 import { ViewType } from '../types';
 
@@ -18,10 +18,11 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isInventarioExpanded, setIsInventarioExpanded] = useState(false);
+  const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
 
   // Auto-expand settings menu when a sub-section is active
   useEffect(() => {
-    if (activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers') {
+    if (activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers' || activeView === 'profile') {
       setIsSettingsExpanded(true);
     } else if (activeView !== 'settings') {
       setIsSettingsExpanded(false);
@@ -36,6 +37,15 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
     } else if (activeView !== 'prep-settings' && activeView !== 'warehouse' && activeView !== 'fifo-labels' && activeView !== 'scan' &&
                activeView !== 'inventario-magazzino' && activeView !== 'inventario-etichette' && activeView !== 'inventario-scan') {
       setIsInventarioExpanded(false);
+    }
+  }, [activeView]);
+
+  // Auto-expand marketing menu when a sub-section is active
+  useEffect(() => {
+    if (activeView === 'marketing-overview' || activeView === 'marketing-tripadvisor' || activeView === 'marketing-google') {
+      setIsMarketingExpanded(true);
+    } else if (activeView !== 'marketing') {
+      setIsMarketingExpanded(false);
     }
   }, [activeView]);
 
@@ -68,6 +78,22 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
       ]
     },
     {
+      label: 'Marketing',
+      items: [
+        { 
+          id: 'marketing' as ViewType, 
+          label: 'Marketing', 
+          icon: TrendingUp,
+          hasSubmenu: true,
+          subItems: [
+            { id: 'marketing-overview' as ViewType, label: 'Panoramica', icon: TrendingUp },
+            { id: 'marketing-tripadvisor' as ViewType, label: 'TripAdvisor', icon: MapPin },
+            { id: 'marketing-google' as ViewType, label: 'Google', icon: Star },
+          ]
+        },
+      ]
+    },
+    {
       label: 'Impostazioni',
       items: [
         { 
@@ -80,6 +106,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
             { id: 'settings-assets' as ViewType, label: 'Costi e Asset', icon: BarChart3 },
             { id: 'settings-staff' as ViewType, label: 'Staff', icon: Users },
             { id: 'settings-suppliers' as ViewType, label: 'Fornitori', icon: Truck },
+            { id: 'profile' as ViewType, label: 'Profilo Utente', icon: User },
           ]
         },
       ]
@@ -88,15 +115,19 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-white border-r border-gray-100">
-      <div className="p-8 pb-4">
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 p-8 pb-4">
         <div className="flex items-center space-x-3 mb-10">
           <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg">
             <Utensils className="text-white" size={20} />
           </div>
           <span className="text-xl font-black tracking-tighter">Pizza Pro</span>
         </div>
+      </div>
 
-        <nav className="space-y-8">
+      {/* Navigation - Scrollable */}
+      <nav className="flex-1 overflow-y-auto px-8 pb-4 min-h-0">
+        <div className="space-y-8">
           {navGroups.map((group) => (
             <div key={group.label} className="space-y-2">
               <h3 className="px-4 text-[10px] font-black uppercase tracking-widest text-gray-300">
@@ -105,13 +136,15 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
               <div className="space-y-1">
                 {group.items.map((item) => {
                   const Icon = item.icon;
-                  const isSettingsSubActive = activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers';
+                  const isSettingsSubActive = activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers' || activeView === 'profile';
                   const isInventarioSubActive = activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'scan' ||
                     activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan';
-                  const isActive = activeView === item.id || (item.hasSubmenu && item.id === 'settings' && isSettingsSubActive) || (item.hasSubmenu && item.id === 'inventario' && isInventarioSubActive);
+                  const isMarketingSubActive = activeView === 'marketing-overview' || activeView === 'marketing-tripadvisor' || activeView === 'marketing-google';
+                  const isActive = activeView === item.id || (item.hasSubmenu && item.id === 'settings' && isSettingsSubActive) || (item.hasSubmenu && item.id === 'inventario' && isInventarioSubActive) || (item.hasSubmenu && item.id === 'marketing' && isMarketingSubActive);
                   const isExpanded = item.hasSubmenu && (
                     (item.id === 'settings' && (isSettingsExpanded || isSettingsSubActive)) ||
-                    (item.id === 'inventario' && (isInventarioExpanded || isInventarioSubActive))
+                    (item.id === 'inventario' && (isInventarioExpanded || isInventarioSubActive)) ||
+                    (item.id === 'marketing' && (isMarketingExpanded || isMarketingSubActive))
                   );
                   
                   return (
@@ -127,6 +160,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
                             } else if (item.id === 'inventario') {
                               // Inventario non apre nulla, solo espande/contrae
                               setIsInventarioExpanded(!isInventarioExpanded);
+                            } else if (item.id === 'marketing') {
+                              // Marketing non apre nulla, solo espande/contrae
+                              setIsMarketingExpanded(!isMarketingExpanded);
                             }
                           } else {
                             setActiveView(item.id);
@@ -186,23 +222,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
               </div>
             </div>
           ))}
-        </nav>
-      </div>
+        </div>
+      </nav>
 
-      <div className="mt-auto p-6 border-t border-gray-50">
-        <button 
-          onClick={() => {
-            setActiveView('profile');
-            setIsSidebarOpen(false);
-          }}
-          className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all ${
-            activeView === 'profile' ? 'bg-blue-50 text-blue-600' : 'text-gray-400 hover:bg-gray-50'
-          }`}
-        >
-          <User size={20} />
-          <span className="text-sm font-black">Profilo Utente</span>
-        </button>
-      </div>
     </div>
   );
 

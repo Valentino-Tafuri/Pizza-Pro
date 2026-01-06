@@ -18,8 +18,13 @@ import FifoLabelsView from './components/Views/FifoLabelsView';
 import ScanView from './components/Views/ScanView';
 import StockAlerts from './components/StockAlerts';
 import PreparationSettingsView from './components/Views/PreparationSettingsView';
+import MarketingOverview from './components/Views/Marketing/MarketingOverview';
+import TripAdvisorView from './components/Views/Marketing/TripAdvisorView';
+import GoogleView from './components/Views/Marketing/GoogleView';
 import { syncData, saveData, deleteData } from './services/database';
-import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement } from './types';
+import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
+import { MOCK_TRIPADVISOR_CONNECTION, MOCK_GOOGLE_CONNECTION, MOCK_REVIEWS, MOCK_REVIEW_STATS } from './services/mockReviewsData';
+import { generateReviewResponse } from './services/aiReviewResponder';
 import { INITIAL_USER } from './constants';
 import { getActivePreparations, PreparationSettings } from './utils/preparationConverter';
 
@@ -39,6 +44,17 @@ const App: React.FC = () => {
   const [fifoLabels, setFifoLabels] = useState<FifoLabel[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [userData, setUserData] = useState<UserData>(INITIAL_USER);
+  
+  // Marketing & Reviews State
+  const [platformConnections, setPlatformConnections] = useState<{
+    tripadvisor: PlatformConnection;
+    google: PlatformConnection;
+  }>({
+    tripadvisor: MOCK_TRIPADVISOR_CONNECTION,
+    google: MOCK_GOOGLE_CONNECTION
+  });
+  const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
+  const [reviewStats, setReviewStats] = useState<ReviewStats>(MOCK_REVIEW_STATS);
 
   // Crea preparations da subRecipes usando settings
   const preparations = useMemo(() => 
@@ -308,9 +324,64 @@ const App: React.FC = () => {
     }
   };
 
+  // Marketing Handlers
+  const handleConnectPlatform = async (
+    platform: ReviewPlatform, 
+    restaurantData: {
+      id: string;
+      name: string;
+      address: string;
+      city: string;
+      rating: number;
+      reviewCount: number;
+    }
+  ) => {
+    if (!user) return;
+    
+    const connection: PlatformConnection = {
+      id: `${platform}-conn`,
+      platform,
+      isConnected: true,
+      restaurantId: restaurantData.id,
+      restaurantName: restaurantData.name,
+      restaurantAddress: restaurantData.address,
+      restaurantCity: restaurantData.city,
+      totalReviews: restaurantData.reviewCount,
+      averageRating: restaurantData.rating,
+      lastSync: new Date()
+    };
+    
+    await handleSave('platformConnections', connection);
+    
+    setPlatformConnections(prev => ({
+      ...prev,
+      [platform]: connection
+    }));
+    
+    alert(`✅ Attività collegata! Sincronizzazione recensioni in corso...`);
+  };
+
+  const handleGenerateAIResponse = async (review: Review): Promise<AIReviewResponse> => {
+    const restaurantName = userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante';
+    return await generateReviewResponse(review, restaurantName);
+  };
+
+  const handleSyncReviews = async (platform: ReviewPlatform) => {
+    alert(`🔄 Sincronizzazione ${platform === 'tripadvisor' ? 'TripAdvisor' : 'Google'} in corso...\n\nNota: Per ora vengono usati dati mock. L'integrazione con le API reali sarà disponibile in futuro.`);
+  };
+
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard': return <DashboardView menu={menu} ingredients={ingredients} subRecipes={subRecipes} userData={userData} employees={employees} />;
+      case 'dashboard': return <DashboardView 
+        menu={menu} 
+        ingredients={ingredients} 
+        subRecipes={subRecipes} 
+        userData={userData} 
+        employees={employees}
+        reviews={reviews}
+        reviewStats={reviewStats}
+        onViewAllReviews={() => setActiveView('marketing-overview')}
+      />;
       case 'economato': return <EconomatoView ingredients={ingredients} suppliers={suppliers} onUpdate={(i) => handleSave('ingredients', i)} onAdd={(i) => handleSave('ingredients', i)} onDelete={(id) => handleDelete('ingredients', id)} onAddSupplier={(s) => handleSave('suppliers', s)} />;
       case 'lab': return <LabView 
         subRecipes={subRecipes} 
@@ -320,6 +391,29 @@ const App: React.FC = () => {
         onUpdate={(sub) => handleSave('subRecipes', sub)} 
         onDelete={(id) => handleDelete('subRecipes', id)} 
         onAddIngredient={(ing) => handleSave('ingredients', ing)} 
+      />;
+      case 'menu': return <MenuView 
+        menu={menu} 
+        ingredients={ingredients} 
+        subRecipes={subRecipes} 
+        suppliers={suppliers} 
+        userData={userData}
+        onAdd={(item) => handleSave('menu', item)} 
+        onUpdate={(item) => handleSave('menu', item)} 
+        onDelete={(id) => handleDelete('menu', id)} 
+        onAddIngredient={(ing) => handleSave('ingredients', ing)} 
+        onAddSupplier={(s) => handleSave('suppliers', s)} 
+      />;
+      case 'laboratorio': return <LabCalculatorView 
+        ingredients={ingredients} 
+        subRecipes={subRecipes} 
+        suppliers={suppliers} 
+        preferments={preferments}
+        onAdd={(sub) => handleSave('subRecipes', sub)} 
+        onUpdate={(sub) => handleSave('subRecipes', sub)} 
+        onDelete={(id) => handleDelete('subRecipes', id)} 
+        onAddIngredient={(ing) => handleSave('ingredients', ing)} 
+        onAddSupplier={(s) => handleSave('suppliers', s)} 
       />;
       case 'inventario-magazzino':
       case 'warehouse': 
@@ -353,8 +447,6 @@ const App: React.FC = () => {
           }}
           onScanLabel={handleScanLabel}
         />;
-      case 'menu': return <MenuView menu={menu} ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} userData={userData} onAdd={(i) => handleSave('menu', i)} onUpdate={(i) => handleSave('menu', i)} onDelete={(id) => handleDelete('menu', id)} onAddIngredient={(i) => handleSave('ingredients', i)} />;
-      case 'laboratorio': return <LabCalculatorView ingredients={ingredients} subRecipes={subRecipes} suppliers={suppliers} preferments={preferments} onAdd={(sub) => handleSave('subRecipes', sub)} onUpdate={(sub) => handleSave('subRecipes', sub)} onDelete={(id) => handleDelete('subRecipes', id)} onAddIngredient={(ing) => handleSave('ingredients', ing)} onAddSupplier={(s) => handleSave('suppliers', s)} />;
       case 'settings': return <SettingsView 
         userData={userData} 
         employees={employees} 
@@ -429,8 +521,66 @@ const App: React.FC = () => {
         preparations={preparations}
         onToggleActive={handleTogglePreparation}
       />;
+      case 'marketing-overview': return <MarketingOverview 
+        tripAdvisorConnection={platformConnections.tripadvisor}
+        googleConnection={platformConnections.google}
+        recentReviews={reviews.slice(0, 5)}
+        overallStats={reviewStats}
+        onSyncReviews={handleSyncReviews}
+      />;
+      case 'marketing-tripadvisor': return <TripAdvisorView 
+        connection={platformConnections.tripadvisor}
+        reviews={reviews.filter(r => r.platform === 'tripadvisor')}
+        onConnect={(restaurant) => handleConnectPlatform('tripadvisor', restaurant)}
+        onGenerateAIResponse={handleGenerateAIResponse}
+        onSaveReply={async (reviewId, reply) => {
+          const review = reviews.find(r => r.id === reviewId);
+          if (review) {
+            const updated = {
+              ...review,
+              reply: {
+                text: reply,
+                date: new Date(),
+                author: userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante'
+              }
+            };
+            await handleSave('reviews', updated);
+            setReviews(prev => prev.map(r => r.id === reviewId ? updated : r));
+          }
+        }}
+      />;
+      case 'marketing-google': return <GoogleView 
+        connection={platformConnections.google}
+        reviews={reviews.filter(r => r.platform === 'google')}
+        onConnect={(restaurant) => handleConnectPlatform('google', restaurant)}
+        onGenerateAIResponse={handleGenerateAIResponse}
+        onSaveReply={async (reviewId, reply) => {
+          const review = reviews.find(r => r.id === reviewId);
+          if (review) {
+            const updated = {
+              ...review,
+              reply: {
+                text: reply,
+                date: new Date(),
+                author: userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante'
+              }
+            };
+            await handleSave('reviews', updated);
+            setReviews(prev => prev.map(r => r.id === reviewId ? updated : r));
+          }
+        }}
+      />;
       case 'profile': return <ProfileView userData={userData} onUpdate={handleUpdateUserData} onSignOut={handleSignOut} />;
-      default: return <DashboardView menu={menu} ingredients={ingredients} subRecipes={subRecipes} userData={userData} employees={employees} />;
+      default: return <DashboardView 
+        menu={menu} 
+        ingredients={ingredients} 
+        subRecipes={subRecipes} 
+        userData={userData} 
+        employees={employees}
+        reviews={reviews}
+        reviewStats={reviewStats}
+        onViewAllReviews={() => setActiveView('marketing-overview')}
+      />;
     }
   };
 
@@ -454,7 +604,11 @@ const App: React.FC = () => {
       'settings-assets': 'COSTI E ASSET',
       'settings-staff': 'STAFF',
       'settings-suppliers': 'FORNITORI',
-      'profile': 'PROFILO UTENTE'
+      'profile': 'PROFILO UTENTE',
+      'marketing': 'MARKETING',
+      'marketing-overview': 'PANORAMICA',
+      'marketing-tripadvisor': 'TRIPADVISOR',
+      'marketing-google': 'GOOGLE'
     };
     return titles[view] || view.toUpperCase();
   };

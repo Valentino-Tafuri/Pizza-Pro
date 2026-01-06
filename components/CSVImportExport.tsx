@@ -7,7 +7,6 @@ interface CSVImportExportProps {
   ingredients: Ingredient[];
   suppliers: Supplier[];
   onImport: (ingredients: Ingredient[]) => Promise<void>;
-  onDeleteAll?: () => Promise<void>;
 }
 
 interface ImportResult {
@@ -16,7 +15,7 @@ interface ImportResult {
   errors: string[];
 }
 
-const CSVImportExport: React.FC<CSVImportExportProps> = ({ ingredients, suppliers, onImport, onDeleteAll }) => {
+const CSVImportExport: React.FC<CSVImportExportProps> = ({ ingredients, suppliers, onImport }) => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -261,27 +260,6 @@ const CSVImportExport: React.FC<CSVImportExportProps> = ({ ingredients, supplier
           </button>
         </div>
       </div>
-
-      {/* Delete All Section */}
-      {onDeleteAll && ingredients.length > 0 && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-100">
-          <h4 className="text-sm font-black text-black mb-4 flex items-center space-x-2">
-            <AlertTriangle size={18} className="text-red-400" />
-            <span>Elimina Ingredienti</span>
-          </h4>
-          <button
-            onClick={async () => {
-              if (window.confirm(`Sei sicuro di voler eliminare tutti i ${ingredients.length} ingredienti? Questa azione non può essere annullata.`)) {
-                await onDeleteAll();
-              }
-            }}
-            className="w-full bg-red-600 text-white py-4 rounded-xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-2 hover:bg-red-700"
-          >
-            <X size={18} />
-            <span>Elimina Tutti gli Ingredienti ({ingredients.length})</span>
-          </button>
-        </div>
-      )}
 
       {/* Import Section */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">

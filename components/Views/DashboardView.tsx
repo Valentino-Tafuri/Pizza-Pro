@@ -12,18 +12,31 @@ import {
   CheckCircle2,
   Package
 } from 'lucide-react';
-import { MenuItem, Ingredient, SubRecipe, UserData, Employee } from '../../types';
+import { MenuItem, Ingredient, SubRecipe, UserData, Employee, Review, ReviewStats } from '../../types';
 import { calculateMenuItemCost } from '../../services/calculator';
+import ReviewsWidget from '../Widgets/ReviewsWidget';
 
 interface DashboardViewProps {
   menu: MenuItem[];
   ingredients: Ingredient[];
   subRecipes: SubRecipe[];
   userData: UserData;
-  employees?: Employee[]; 
+  employees?: Employee[];
+  reviews?: Review[];
+  reviewStats?: ReviewStats;
+  onViewAllReviews?: () => void;
 }
 
-const DashboardView: React.FC<DashboardViewProps> = ({ menu, ingredients, subRecipes, userData, employees = [] }) => {
+const DashboardView: React.FC<DashboardViewProps> = ({ 
+  menu, 
+  ingredients, 
+  subRecipes, 
+  userData, 
+  employees = [],
+  reviews = [],
+  reviewStats,
+  onViewAllReviews
+}) => {
   const bep = userData.bepConfig || { fixedCosts: [], foodCostIncidence: 30, serviceIncidence: 5, wasteIncidence: 2, averageTicket: 15 };
 
   // --- CALCOLO STATISTICHE BEP REALI ---
@@ -154,6 +167,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ menu, ingredients, subRec
             <span>Soglia Allerta: {userData.foodCostThreshold}%</span>
           </div>
         </div>
+
+        {/* WIDGET 5: RECENSIONI ONLINE */}
+        {reviews.length > 0 && reviewStats && onViewAllReviews && (
+          <ReviewsWidget
+            reviews={reviews}
+            averageRating={reviewStats.averageRating}
+            onViewAll={onViewAllReviews}
+          />
+        )}
 
       </div>
     </div>

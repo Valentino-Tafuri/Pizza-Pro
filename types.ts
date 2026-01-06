@@ -134,4 +134,78 @@ export interface MenuItem {
   isDelivery?: boolean;
 }
 
-export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile';
+// Marketing & Reviews Types
+export type ReviewPlatform = 'tripadvisor' | 'google';
+
+export interface Review {
+  id: string;
+  platform: ReviewPlatform;
+  author: string;
+  authorAvatar?: string;
+  rating: number; // 1-5 stelle
+  date: Date | any;
+  title?: string; // Solo TripAdvisor
+  text: string;
+  language: string;
+  reply?: ReviewReply;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  keywords: string[]; // Estratti da AI
+}
+
+export interface ReviewReply {
+  text: string;
+  date: Date | any;
+  author: string; // Nome ristorante/owner
+}
+
+export interface RestaurantSearchResult {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  rating: number;
+  reviewCount: number;
+  imageUrl?: string;
+  platform: 'tripadvisor' | 'google';
+}
+
+export interface PlatformConnection {
+  id: string;
+  platform: ReviewPlatform;
+  isConnected: boolean;
+  restaurantId?: string; // TripAdvisor location ID o Google Place ID
+  restaurantName?: string;
+  restaurantAddress?: string;
+  restaurantCity?: string;
+  lastSync?: Date | any;
+  totalReviews?: number;
+  averageRating?: number;
+}
+
+export interface ReviewStats {
+  totalReviews: number;
+  averageRating: number;
+  ratingDistribution: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+  };
+  sentimentDistribution: {
+    positive: number;
+    neutral: number;
+    negative: number;
+  };
+  replyRate: number; // Percentuale recensioni con risposta
+  lastUpdate: Date | any;
+}
+
+export interface AIReviewResponse {
+  suggestedText: string;
+  tone: 'formal' | 'friendly' | 'apologetic';
+  keyPoints: string[];
+  sentiment: string;
+}
+
+export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile' | 'marketing' | 'marketing-overview' | 'marketing-tripadvisor' | 'marketing-google';

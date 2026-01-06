@@ -78,13 +78,6 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     }
   };
 
-  const handleDeleteAll = async () => {
-    if (onDelete && ingredients.length > 0) {
-      for (const ingredient of ingredients) {
-        await onDelete(ingredient.id);
-      }
-    }
-  };
 
   const renderForm = () => (
     <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300">
@@ -270,7 +263,6 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
               ingredients={ingredients} 
               suppliers={suppliers} 
               onImport={handleBulkImport}
-              onDeleteAll={handleDeleteAll}
             />
           </div>
         )}
