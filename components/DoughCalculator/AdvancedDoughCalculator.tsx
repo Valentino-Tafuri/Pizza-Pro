@@ -13,12 +13,14 @@ interface AdvancedDoughCalculatorProps {
   ingredients: Ingredient[];
   preferments: Preferment[];
   onSave?: (recipe: any) => void;
+  userName?: string; // Nome utente per il PDF
 }
 
 const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
   ingredients,
   preferments,
-  onSave
+  onSave,
+  userName
 }) => {
   // Parametri generali
   const [recipeName, setRecipeName] = useState('');
@@ -1032,6 +1034,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                     ingredients,
                     portionWeight,
                     preferment: usePreferment ? selectedPreferment : null,
+                    userName: userName,
                     management: {
                       preferment: usePreferment ? {
                         time: prefStorageTime,
@@ -1127,6 +1130,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                   ingredients,
                   portionWeight,
                   preferment: usePreferment ? selectedPreferment : null,
+                  userName: userName,
                   management: {
                     preferment: usePreferment ? {
                       time: prefStorageTime,

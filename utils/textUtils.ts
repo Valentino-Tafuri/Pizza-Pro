@@ -8,3 +8,4 @@ export const normalizeText = (text: string): string => {
     .join(' ');
 };
 
+

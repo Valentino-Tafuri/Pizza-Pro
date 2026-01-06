@@ -22,9 +22,8 @@ import PreparationSettingsView from './components/Views/PreparationSettingsView'
 import MarketingOverview from './components/Views/Marketing/MarketingOverview';
 import TripAdvisorView from './components/Views/Marketing/TripAdvisorView';
 import GoogleView from './components/Views/Marketing/GoogleView';
-import { syncData, saveData, deleteData } from './services/database';
+import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
-import { MOCK_TRIPADVISOR_CONNECTION, MOCK_GOOGLE_CONNECTION, MOCK_REVIEWS, MOCK_REVIEW_STATS } from './services/mockReviewsData';
 import { generateReviewResponse } from './services/aiReviewResponder';
 import { INITIAL_USER } from './constants';
 import { getActivePreparations, PreparationSettings } from './utils/preparationConverter';
@@ -51,11 +50,18 @@ const App: React.FC = () => {
     tripadvisor: PlatformConnection;
     google: PlatformConnection;
   }>({
-    tripadvisor: MOCK_TRIPADVISOR_CONNECTION,
-    google: MOCK_GOOGLE_CONNECTION
+    tripadvisor: { id: 'tripadvisor-conn', platform: 'tripadvisor', isConnected: false },
+    google: { id: 'google-conn', platform: 'google', isConnected: false }
   });
-  const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
-  const [reviewStats, setReviewStats] = useState<ReviewStats>(MOCK_REVIEW_STATS);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewStats, setReviewStats] = useState<ReviewStats>({
+    totalReviews: 0,
+    averageRating: 0,
+    ratingDistribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+    sentimentDistribution: { positive: 0, neutral: 0, negative: 0 },
+    replyRate: 0,
+    lastUpdate: new Date()
+  });
 
   // Crea preparations da subRecipes usando settings
   const preparations = useMemo(() => 
@@ -105,9 +111,37 @@ const App: React.FC = () => {
     });
     const unsubLabels = syncData(user.uid, 'fifoLabels', setFifoLabels);
     const unsubMov = syncData(user.uid, 'stockMovements', setStockMovements);
-    return () => { 
+    const unsubPlatformConn = syncData(user.uid, 'platformConnections', (data: PlatformConnection[]) => {
+      console.log('[App] PlatformConnections sincronizzate:', data.length);
+      const taConn = data.find(c => c.platform === 'tripadvisor');
+      const googleConn = data.find(c => c.platform === 'google');
+      setPlatformConnections({
+        tripadvisor: taConn || MOCK_TRIPADVISOR_CONNECTION,
+        google: googleConn || MOCK_GOOGLE_CONNECTION
+      });
+    });
+    
+    // Esponi funzione di pulizia economato globalmente per uso dalla console
+    (window as any).cleanupUserEconomato = async (uid: string) => {
+      if (!uid) {
+        console.error('❌ UID utente richiesto');
+        return 0;
+      }
+      console.log(`🧹 Inizio pulizia economato per utente: ${uid}`);
+      try {
+        const deletedCount = await deleteAllData(uid, 'ingredients');
+        console.log(`✅ Pulizia completata! Eliminati ${deletedCount} ingredienti.`);
+        return deletedCount;
+      } catch (error) {
+        console.error('❌ Errore durante la pulizia:', error);
+        throw error;
+      }
+    };
+    
+    return () => {
       unsubIng(); unsubSub(); unsubMenu(); unsubSup(); unsubEmp(); unsubPref();
-      unsubSettings(); unsubLabels(); unsubMov();
+      unsubSettings(); unsubLabels(); unsubMov(); unsubPlatformConn();
+      delete (window as any).cleanupUserEconomato;
     };
   }, [user]);
 
@@ -363,12 +397,36 @@ const App: React.FC = () => {
   };
 
   const handleGenerateAIResponse = async (review: Review): Promise<AIReviewResponse> => {
-    const restaurantName = userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante';
+    // Usa il nome dell'attività configurato, altrimenti fallback al nome utente
+    const restaurantName = userData.businessConfig?.name ||
+      (userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante');
     return await generateReviewResponse(review, restaurantName);
   };
 
   const handleSyncReviews = async (platform: ReviewPlatform) => {
     alert(`🔄 Sincronizzazione ${platform === 'tripadvisor' ? 'TripAdvisor' : 'Google'} in corso...\n\nNota: Per ora vengono usati dati mock. L'integrazione con le API reali sarà disponibile in futuro.`);
+  };
+
+  const handleSaveBusinessConfig = async (config: any) => {
+    await handleUpdateUserData({ businessConfig: config });
+  };
+
+  const handleDisconnectPlatform = async (platform: 'tripadvisor' | 'google') => {
+    const disconnectedConnection: PlatformConnection = {
+      id: `${platform}-conn`,
+      platform,
+      isConnected: false
+    };
+
+    setPlatformConnections(prev => ({
+      ...prev,
+      [platform]: disconnectedConnection
+    }));
+
+    // Salva in Firestore
+    if (user) {
+      await handleSave('platformConnections', disconnectedConnection);
+    }
   };
 
   const renderView = () => {
@@ -419,7 +477,8 @@ const App: React.FC = () => {
         onUpdate={(sub) => handleSave('subRecipes', sub)} 
         onDelete={(id) => handleDelete('subRecipes', id)} 
         onAddIngredient={(ing) => handleSave('ingredients', ing)} 
-        onAddSupplier={(s) => handleSave('suppliers', s)} 
+        onAddSupplier={(s) => handleSave('suppliers', s)}
+        userData={userData}
       />;
       case 'inventario-magazzino':
       case 'warehouse': 
@@ -455,101 +514,118 @@ const App: React.FC = () => {
           }}
           onScanLabel={handleScanLabel}
         />;
-      case 'settings': return <SettingsView 
-        userData={userData} 
-        employees={employees} 
+      case 'settings': return <SettingsView
+        userData={userData}
+        employees={employees}
         suppliers={suppliers}
+        platformConnections={platformConnections}
         preferments={preferments}
-        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })} 
-        onSaveEmployee={(e) => handleSave('employees', e)} 
-        onDeleteEmployee={(id) => handleDelete('employees', id)} 
-        onSaveSupplier={(s) => handleSave('suppliers', s)} 
-        onDeleteSupplier={(id) => handleDelete('suppliers', id)} 
-        onSavePreferment={(p) => handleSave('preferments', p)} 
-        onDeletePreferment={(id) => handleDelete('preferments', id)} 
+        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
+        onSaveEmployee={(e) => handleSave('employees', e)}
+        onDeleteEmployee={(id) => handleDelete('employees', id)}
+        onSaveSupplier={(s) => handleSave('suppliers', s)}
+        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
+        onSavePreferment={(p) => handleSave('preferments', p)}
+        onDeletePreferment={(id) => handleDelete('preferments', id)}
+        onSaveBusinessConfig={handleSaveBusinessConfig}
+        onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection={null}
       />;
-      case 'settings-prefermenti': return <SettingsView 
-        userData={userData} 
-        employees={employees} 
+      case 'settings-prefermenti': return <SettingsView
+        userData={userData}
+        employees={employees}
         suppliers={suppliers}
+        platformConnections={platformConnections}
         preferments={preferments}
-        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })} 
-        onSaveEmployee={(e) => handleSave('employees', e)} 
-        onDeleteEmployee={(id) => handleDelete('employees', id)} 
-        onSaveSupplier={(s) => handleSave('suppliers', s)} 
-        onDeleteSupplier={(id) => handleDelete('suppliers', id)} 
-        onSavePreferment={(p) => handleSave('preferments', p)} 
-        onDeletePreferment={(id) => handleDelete('preferments', id)} 
+        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
+        onSaveEmployee={(e) => handleSave('employees', e)}
+        onDeleteEmployee={(id) => handleDelete('employees', id)}
+        onSaveSupplier={(s) => handleSave('suppliers', s)}
+        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
+        onSavePreferment={(p) => handleSave('preferments', p)}
+        onDeletePreferment={(id) => handleDelete('preferments', id)}
+        onSaveBusinessConfig={handleSaveBusinessConfig}
+        onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection="prefermenti"
       />;
-      case 'settings-assets': return <SettingsView 
-        userData={userData} 
-        employees={employees} 
+      case 'settings-assets': return <SettingsView
+        userData={userData}
+        employees={employees}
         suppliers={suppliers}
+        platformConnections={platformConnections}
         preferments={preferments}
-        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })} 
-        onSaveEmployee={(e) => handleSave('employees', e)} 
-        onDeleteEmployee={(id) => handleDelete('employees', id)} 
-        onSaveSupplier={(s) => handleSave('suppliers', s)} 
-        onDeleteSupplier={(id) => handleDelete('suppliers', id)} 
-        onSavePreferment={(p) => handleSave('preferments', p)} 
-        onDeletePreferment={(id) => handleDelete('preferments', id)} 
+        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
+        onSaveEmployee={(e) => handleSave('employees', e)}
+        onDeleteEmployee={(id) => handleDelete('employees', id)}
+        onSaveSupplier={(s) => handleSave('suppliers', s)}
+        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
+        onSavePreferment={(p) => handleSave('preferments', p)}
+        onDeletePreferment={(id) => handleDelete('preferments', id)}
+        onSaveBusinessConfig={handleSaveBusinessConfig}
+        onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection="assets"
       />;
-      case 'settings-staff': return <SettingsView 
-        userData={userData} 
-        employees={employees} 
+      case 'settings-staff': return <SettingsView
+        userData={userData}
+        employees={employees}
         suppliers={suppliers}
+        platformConnections={platformConnections}
         preferments={preferments}
-        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })} 
-        onSaveEmployee={(e) => handleSave('employees', e)} 
-        onDeleteEmployee={(id) => handleDelete('employees', id)} 
-        onSaveSupplier={(s) => handleSave('suppliers', s)} 
-        onDeleteSupplier={(id) => handleDelete('suppliers', id)} 
-        onSavePreferment={(p) => handleSave('preferments', p)} 
-        onDeletePreferment={(id) => handleDelete('preferments', id)} 
+        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
+        onSaveEmployee={(e) => handleSave('employees', e)}
+        onDeleteEmployee={(id) => handleDelete('employees', id)}
+        onSaveSupplier={(s) => handleSave('suppliers', s)}
+        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
+        onSavePreferment={(p) => handleSave('preferments', p)}
+        onDeletePreferment={(id) => handleDelete('preferments', id)}
+        onSaveBusinessConfig={handleSaveBusinessConfig}
+        onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection="staff"
       />;
-      case 'settings-suppliers': return <SettingsView 
-        userData={userData} 
-        employees={employees} 
+      case 'settings-suppliers': return <SettingsView
+        userData={userData}
+        employees={employees}
         suppliers={suppliers}
+        platformConnections={platformConnections}
         preferments={preferments}
-        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })} 
-        onSaveEmployee={(e) => handleSave('employees', e)} 
-        onDeleteEmployee={(id) => handleDelete('employees', id)} 
-        onSaveSupplier={(s) => handleSave('suppliers', s)} 
-        onDeleteSupplier={(id) => handleDelete('suppliers', id)} 
-        onSavePreferment={(p) => handleSave('preferments', p)} 
-        onDeletePreferment={(id) => handleDelete('preferments', id)} 
+        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
+        onSaveEmployee={(e) => handleSave('employees', e)}
+        onDeleteEmployee={(id) => handleDelete('employees', id)}
+        onSaveSupplier={(s) => handleSave('suppliers', s)}
+        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
+        onSavePreferment={(p) => handleSave('preferments', p)}
+        onDeletePreferment={(id) => handleDelete('preferments', id)}
+        onSaveBusinessConfig={handleSaveBusinessConfig}
+        onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection="suppliers"
       />;
       case 'prep-settings': return <PreparationSettingsView 
         preparations={preparations}
         onGenerateLabels={handleGenerateLabels}
       />;
-      case 'marketing-overview': return <MarketingOverview 
+      case 'marketing-overview': return <MarketingOverview
         tripAdvisorConnection={platformConnections.tripadvisor}
         googleConnection={platformConnections.google}
         recentReviews={reviews.slice(0, 5)}
         overallStats={reviewStats}
-        onSyncReviews={handleSyncReviews}
       />;
-      case 'marketing-tripadvisor': return <TripAdvisorView 
+      case 'marketing-tripadvisor': return <TripAdvisorView
         connection={platformConnections.tripadvisor}
         reviews={reviews.filter(r => r.platform === 'tripadvisor')}
+        businessConfig={userData.businessConfig}
         onConnect={(restaurant) => handleConnectPlatform('tripadvisor', restaurant)}
         onGenerateAIResponse={handleGenerateAIResponse}
         onSaveReply={async (reviewId, reply) => {
           const review = reviews.find(r => r.id === reviewId);
           if (review) {
+            const replyAuthor = userData.businessConfig?.name ||
+              (userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante');
             const updated = {
               ...review,
               reply: {
                 text: reply,
                 date: new Date(),
-                author: userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante'
+                author: replyAuthor
               }
             };
             await handleSave('reviews', updated);
@@ -557,20 +633,23 @@ const App: React.FC = () => {
           }
         }}
       />;
-      case 'marketing-google': return <GoogleView 
+      case 'marketing-google': return <GoogleView
         connection={platformConnections.google}
         reviews={reviews.filter(r => r.platform === 'google')}
+        businessConfig={userData.businessConfig}
         onConnect={(restaurant) => handleConnectPlatform('google', restaurant)}
         onGenerateAIResponse={handleGenerateAIResponse}
         onSaveReply={async (reviewId, reply) => {
           const review = reviews.find(r => r.id === reviewId);
           if (review) {
+            const replyAuthor = userData.businessConfig?.name ||
+              (userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante');
             const updated = {
               ...review,
               reply: {
                 text: reply,
                 date: new Date(),
-                author: userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante'
+                author: replyAuthor
               }
             };
             await handleSave('reviews', updated);

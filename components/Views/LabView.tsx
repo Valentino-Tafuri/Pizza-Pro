@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Plus, X, Edit2, Trash2, Scale, Database, ChevronRight, 
   BrainCircuit, ClipboardList, Loader2, AlertTriangle, Truck, Check, 
-  Calendar, Sparkles, Phone, ChefHat, Save, Wand2, Wand, ToggleLeft, ToggleRight
+  Calendar, Sparkles, Phone, ChefHat, Save, Wand2, Wand, ToggleLeft, ToggleRight, Printer
 } from 'lucide-react';
 import { SubRecipe, Ingredient, ComponentUsage, Unit, Supplier } from '../../types';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
@@ -381,14 +381,17 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
   );
 
   const renderForm = (isEdit: boolean) => (
-    <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
-      <div className="px-6 pt-12 pb-4 flex justify-between items-center border-b border-gray-50">
-        <h3 className="font-black text-2xl tracking-tight">{isEdit ? 'Modifica Topping' : 'Riepilogo Topping'}</h3>
-        <button onClick={() => { setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={20}/></button>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-40 scrollbar-hide">
-        {!isEdit && (
+    <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300">
+      <div className="w-full max-w-xl bg-white rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-y-auto max-h-[95vh] pb-12 scrollbar-hide relative">
+        <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8" />
+        
+        <header className="flex justify-between items-center mb-8">
+          <h3 className="text-3xl font-black tracking-tighter">{isEdit ? 'Modifica Topping' : 'Riepilogo Topping'}</h3>
+          <button onClick={() => { setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={24}/></button>
+        </header>
+        
+        <div className="space-y-6">
+          {!isEdit && (
           <div className="p-6 bg-blue-50 rounded-[2.5rem] border border-blue-100">
              <p className="text-[10px] font-black uppercase text-blue-400 mb-1">Nome Preparazione</p>
              <p className="text-3xl font-black text-black tracking-tight">{form.name}</p>
@@ -598,19 +601,18 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
             <p className="text-[8px] text-blue-400 font-bold mt-1">Calcolato automaticamente</p>
           </div>
         </div>
-      </div>
 
-      <div className="p-6 bg-white border-t border-gray-50 safe-area-bottom">
         <button 
           onClick={() => {
             const payload = { ...form, id: editingId || Math.random().toString(36).substr(2,9) } as SubRecipe;
             if (editingId) onUpdate(payload); else onAdd(payload);
             setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false);
           }} 
-          className="w-full bg-black text-white py-5 rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all flex items-center justify-center space-x-2"
+          className="w-full py-6 bg-black text-white rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all flex items-center justify-center space-x-2 mt-4"
         >
           <Save size={20}/> <span>Finalizza Ricetta</span>
         </button>
+        </div>
       </div>
     </div>
   );
@@ -964,6 +966,38 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
                 </div>
               </div>
               <div className="flex flex-col space-y-3">
+                {/* Pulsante Stampa PDF - solo per ricette create con calcolatore avanzato */}
+                {sub.advancedCalculatorData && (
+                  <button 
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        const { generateRecipePDF } = await import('../../utils/pdfGenerator');
+                        // Nota: userData non è disponibile in LabView, ma può essere passata come prop se necessario
+                        const userName = undefined; // Sarà mostrato solo se passato come prop
+                        
+                        generateRecipePDF({
+                          name: sub.name,
+                          category: sub.category,
+                          hydration: sub.advancedCalculatorData.hydration,
+                          result: sub.advancedCalculatorData.calculation,
+                          ingredients: ingredients,
+                          portionWeight: sub.portionWeight,
+                          preferment: sub.advancedCalculatorData.preferment,
+                          userName: userName,
+                          management: sub.advancedCalculatorData.management
+                        });
+                      } catch (error) {
+                        console.error('Errore generazione PDF:', error);
+                        alert('Errore nella generazione del PDF. Assicurati che la ricetta sia stata creata con il calcolatore avanzato.');
+                      }
+                    }}
+                    className="p-3 bg-purple-50 rounded-2xl text-purple-600 hover:bg-purple-100 transition-colors"
+                    title="Stampa PDF Ricetta"
+                  >
+                    <Printer size={18} />
+                  </button>
+                )}
                 <button onClick={() => { 
                   setEditingId(sub.id); 
                   setForm(sub); 

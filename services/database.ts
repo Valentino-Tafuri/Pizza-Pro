@@ -10,7 +10,8 @@ import {
   query, 
   orderBy,
   getDoc,
-  setDoc
+  setDoc,
+  getDocs
 } from "firebase/firestore";
 
 const getCollectionPath = (uid: string, sub: string) => `users/${uid}/${sub}`;
@@ -93,6 +94,32 @@ export const deleteData = async (uid: string, sub: string, id: string): Promise<
     await deleteDoc(docRef);
   } catch (error) {
     console.error(`Firestore Delete Error [${sub}]:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Elimina tutti i documenti in una collection per un utente specifico
+ * @param uid - User ID
+ * @param sub - Nome della collection (es. 'ingredients' per l'economato)
+ * @returns Numero di documenti eliminati
+ */
+export const deleteAllData = async (uid: string, sub: string): Promise<number> => {
+  if (!uid) throw new Error("User UID is required to delete data");
+
+  try {
+    const colRef = collection(db, getCollectionPath(uid, sub));
+    const snapshot = await getDocs(colRef);
+    
+    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    const deletedCount = snapshot.docs.length;
+    console.log(`[deleteAllData] Eliminati ${deletedCount} documenti dalla collection ${sub} per l'utente ${uid}`);
+    
+    return deletedCount;
+  } catch (error) {
+    console.error(`Firestore Delete All Error [${sub}]:`, error);
     throw error;
   }
 };

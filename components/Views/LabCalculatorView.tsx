@@ -16,6 +16,7 @@ interface LabCalculatorViewProps {
   onDelete?: (id: string) => void;
   onAddIngredient?: (ing: Ingredient) => Promise<string | undefined>;
   onAddSupplier?: (sup: Supplier) => Promise<string | undefined>;
+  userData?: { firstName?: string; lastName?: string }; // Nome utente per PDF
 }
 
 interface RecipeResult {
@@ -32,7 +33,7 @@ interface RecipeResult {
   totalWeight: number;
 }
 
-const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subRecipes, suppliers, preferments, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier }) => {
+const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subRecipes, suppliers, preferments, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier, userData }) => {
   const totalFlour = 1000; // Base fissa
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -2004,6 +2005,39 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   <p className="text-xs text-gray-400 font-bold uppercase">{recipe.category}</p>
                 </div>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  {/* Pulsante Stampa PDF - solo per ricette create con calcolatore avanzato */}
+                  {recipe.advancedCalculatorData && (
+                    <button 
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const { generateRecipePDF } = await import('../../utils/pdfGenerator');
+                          const userName = userData?.firstName && userData?.lastName 
+                            ? `${userData.firstName} ${userData.lastName}`
+                            : undefined;
+                          
+                          generateRecipePDF({
+                            name: recipe.name,
+                            category: recipe.category,
+                            hydration: recipe.advancedCalculatorData.hydration,
+                            result: recipe.advancedCalculatorData.calculation,
+                            ingredients: ingredients,
+                            portionWeight: recipe.portionWeight,
+                            preferment: recipe.advancedCalculatorData.preferment,
+                            userName: userName,
+                            management: recipe.advancedCalculatorData.management
+                          });
+                        } catch (error) {
+                          console.error('Errore generazione PDF:', error);
+                          alert('Errore nella generazione del PDF. Assicurati che la ricetta sia stata creata con il calcolatore avanzato.');
+                        }
+                      }}
+                      className="bg-purple-50 p-3 rounded-2xl text-purple-600 border border-purple-100 hover:bg-purple-100 hover:text-purple-700 transition-colors"
+                      title="Stampa PDF Ricetta"
+                    >
+                      <Printer size={18} />
+                    </button>
+                  )}
                   {onUpdate && (
                     <button onClick={() => handleEdit(recipe)} className="bg-gray-50 p-3 rounded-2xl text-gray-400 border border-gray-100 hover:bg-gray-100 hover:text-black transition-colors">
                       <Edit2 size={18} />
@@ -2042,6 +2076,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
             <AdvancedDoughCalculator
               ingredients={ingredients}
               preferments={preferments}
+              userName={userData?.firstName && userData?.lastName ? `${userData.firstName} ${userData.lastName}` : undefined}
               onSave={async (recipeData) => {
                 // Converti risultato calcolatore in SubRecipe
                 const calcResult = recipeData.calculation;
@@ -2103,7 +2138,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                 // Nota: questi potrebbero non essere ingredienti dell'economato, 
                 // quindi per ora li saltiamo. Se necessario, possono essere aggiunti come ingredienti aggiuntivi.
                 
-                // Crea SubRecipe
+                // Crea SubRecipe con dati completi del calcolatore
                 const subRecipe: SubRecipe = {
                   id: editingId || Math.random().toString(36).substr(2, 9),
                   name: recipeData.name || `Impasto ${recipeData.hydration}%`,
@@ -2111,7 +2146,14 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   components: components,
                   initialWeight: calcResult.totalWeight / 1000,
                   yieldWeight: calcResult.totalWeight / 1000,
-                  portionWeight: portionWeight
+                  portionWeight: portionWeight,
+                  // Salva i dati completi del calcolatore per poter rigenerare il PDF
+                  advancedCalculatorData: {
+                    hydration: recipeData.hydration,
+                    calculation: calcResult,
+                    management: recipeData.management,
+                    preferment: recipeData.preferment
+                  }
                 };
                 
                 try {

@@ -23,6 +23,7 @@ interface RecipePDFData {
   ingredients: Ingredient[];
   portionWeight?: number;
   preferment?: Preferment | null;
+  userName?: string; // Nome utente per il PDF
   // Parametri di gestione fasi
   management?: {
     preferment?: PhaseManagement;
@@ -37,7 +38,7 @@ interface RecipePDFData {
 export function generateRecipePDF(data: RecipePDFData): void {
   const doc = new jsPDF();
   
-  const { name, category, hydration, result, ingredients, portionWeight, preferment } = data;
+  const { name, category, hydration, result, ingredients, portionWeight, preferment, userName, management } = data;
   
   // Helper per ottenere nome ingrediente
   const getIngredientName = (id: string): string => {
@@ -53,19 +54,29 @@ export function generateRecipePDF(data: RecipePDFData): void {
   const primaryColor = [0, 0, 0]; // Nero
   const secondaryColor = [100, 100, 100]; // Grigio
   
-  // HEADER con logo e titolo (stile professionale)
+  // HEADER con nome utente e titolo (stile professionale)
   const pageWidth = doc.internal.pageSize.getWidth();
   
-  // Logo arancione (due cerchi sovrapposti per effetto goccia)
-  doc.setFillColor(255, 165, 0);
-  doc.ellipse(22, 15, 3, 4, 'F');
-  doc.ellipse(28, 15, 3, 4, 'F');
-  
-  // Testo "LE RICETTE"
-  doc.setFontSize(8);
-  doc.setTextColor(255, 140, 0);
-  doc.setFont('helvetica', 'normal');
-  doc.text('LE RICETTE', 35, 17);
+  // Nome utente (al posto del logo)
+  if (userName) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 140, 0);
+    const userNameWidth = doc.getTextWidth(userName.toUpperCase());
+    doc.text(userName.toUpperCase(), 14, 17);
+    
+    // Testo "LE RICETTE" sotto il nome
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150, 150, 150);
+    doc.text('LE RICETTE', 14, 22);
+  } else {
+    // Fallback se non c'è nome utente
+    doc.setFontSize(8);
+    doc.setTextColor(255, 140, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.text('LE RICETTE', 14, 17);
+  }
   
   // Titolo principale (centrato, grande, bold)
   doc.setFontSize(22);

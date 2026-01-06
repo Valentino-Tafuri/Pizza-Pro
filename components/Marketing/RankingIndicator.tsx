@@ -84,3 +84,4 @@ const RankingIndicator: React.FC<RankingIndicatorProps> = ({
 
 export default RankingIndicator;
 
+

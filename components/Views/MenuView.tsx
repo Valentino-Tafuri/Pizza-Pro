@@ -538,12 +538,16 @@ Header richiesti:
   );
 
   const renderForm = (isEdit: boolean) => (
-    <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
-      <div className="px-6 pt-12 pb-4 flex justify-between items-center border-b border-gray-50">
-        <h3 className="font-black text-2xl tracking-tight">{isEdit ? 'Modifica Pizza' : 'Dettagli Ricetta'}</h3>
-        <button onClick={() => { setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={20}/></button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide pb-32">
+    <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300">
+      <div className="w-full max-w-xl bg-white rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-y-auto max-h-[95vh] pb-12 scrollbar-hide relative">
+        <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8" />
+        
+        <header className="flex justify-between items-center mb-8">
+          <h3 className="text-3xl font-black tracking-tighter">{isEdit ? 'Modifica Pizza' : 'Dettagli Ricetta'}</h3>
+          <button onClick={() => { setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={24}/></button>
+        </header>
+        
+        <div className="space-y-6">
         <input type="text" className="w-full bg-gray-50 border-none rounded-2xl p-4 text-xl font-black" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} onBlur={e => setForm({...form, name: normalizeText(e.target.value)})} placeholder="Nome Pizza" />
         
         <div className="space-y-2">
@@ -749,13 +753,13 @@ Header richiesti:
             </div>
           );
         })()}
-      </div>
-      <div className="p-6 bg-white border-t border-gray-50 safe-area-bottom">
+        </div>
+
         <button onClick={() => {
           const payload = { ...form, id: editingId || Math.random().toString(36).substr(2,9), category: form.category || 'Generica', components: form.components || [] } as MenuItem;
           if (editingId) onUpdate(payload); else onAdd(payload);
           setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false);
-        }} className="w-full bg-black text-white py-5 rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all">Salva Pizza</button>
+        }} className="w-full py-6 bg-black text-white rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all mt-4">Salva Pizza</button>
       </div>
     </div>
   );

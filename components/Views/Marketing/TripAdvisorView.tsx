@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Star, Sparkles, Copy, RefreshCw, X, Check, ExternalLink } from 'lucide-react';
-import { PlatformConnection, Review, AIReviewResponse, RestaurantSearchResult } from '../../../types';
+import { Star, Sparkles, Copy, RefreshCw, X, Check, ExternalLink, Store, MapPin, CheckCircle2, Loader2 } from 'lucide-react';
+import { PlatformConnection, Review, AIReviewResponse, RestaurantSearchResult, BusinessConfig } from '../../../types';
 import { generateReviewResponse } from '../../../services/aiReviewResponder';
 import RestaurantSearch from '../../Marketing/RestaurantSearch';
 
 interface TripAdvisorViewProps {
   connection: PlatformConnection;
   reviews: Review[];
+  businessConfig?: BusinessConfig;
   onConnect: (restaurant: RestaurantSearchResult) => Promise<void>;
   onGenerateAIResponse: (review: Review) => Promise<AIReviewResponse>;
   onSaveReply: (reviewId: string, reply: string) => Promise<void>;
@@ -15,6 +16,7 @@ interface TripAdvisorViewProps {
 const TripAdvisorView: React.FC<TripAdvisorViewProps> = ({
   connection,
   reviews,
+  businessConfig,
   onConnect,
   onGenerateAIResponse,
   onSaveReply
@@ -25,6 +27,8 @@ const TripAdvisorView: React.FC<TripAdvisorViewProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [showManualSearch, setShowManualSearch] = useState(false);
 
   const filteredReviews = useMemo(() => {
     let filtered = reviews;
@@ -100,12 +104,116 @@ const TripAdvisorView: React.FC<TripAdvisorViewProps> = ({
     return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  const handleQuickConnect = async () => {
+    if (!businessConfig?.name) return;
+
+    setIsConnecting(true);
+    try {
+      const restaurantData: RestaurantSearchResult = {
+        id: businessConfig.tripadvisorId || `tripadvisor-${Date.now()}`,
+        name: businessConfig.name,
+        address: businessConfig.address || '',
+        city: businessConfig.city,
+        rating: 0,
+        reviewCount: 0,
+        platform: 'tripadvisor'
+      };
+      await onConnect(restaurantData);
+    } catch (error) {
+      console.error('Error connecting:', error);
+      alert('Errore durante il collegamento');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   if (!connection.isConnected) {
+    // Se c'è businessConfig configurato, mostra opzione collegamento diretto
+    if (businessConfig?.name && !showManualSearch) {
+      return (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-green-600 rounded-lg p-3">
+                <span className="text-white font-black text-lg">TA</span>
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-black">Connetti TripAdvisor</h2>
+                <p className="text-sm font-semibold text-gray-500">Collega la tua attività per gestire le recensioni</p>
+              </div>
+            </div>
+
+            {/* Quick Connect Card */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-2xl p-6 mb-4">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                  <Store className="text-green-600" size={32} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-black text-black mb-1">{businessConfig.name}</h3>
+                  {businessConfig.address && (
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 mb-1">
+                      <MapPin size={14} />
+                      <span>{businessConfig.address}, {businessConfig.city}</span>
+                    </div>
+                  )}
+                  {!businessConfig.address && businessConfig.city && (
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 mb-1">
+                      <MapPin size={14} />
+                      <span>{businessConfig.city}</span>
+                    </div>
+                  )}
+                  <p className="text-xs font-semibold text-green-700 mt-2">
+                    Dati dalla tua configurazione in Impostazioni
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleQuickConnect}
+                disabled={isConnecting}
+                className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white rounded-xl py-4 px-6 text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={18} />
+                    Collegamento in corso...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    Collega questa attività
+                  </>
+                )}
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowManualSearch(true)}
+              className="w-full text-center text-sm font-semibold text-gray-500 hover:text-gray-700 py-2"
+            >
+              Oppure cerca un'altra attività →
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <RestaurantSearch 
-        platform={connection.platform}
-        onConnect={onConnect}
-      />
+      <div className="space-y-4">
+        {businessConfig?.name && showManualSearch && (
+          <button
+            onClick={() => setShowManualSearch(false)}
+            className="text-sm font-semibold text-green-600 hover:text-green-800 flex items-center gap-1"
+          >
+            ← Torna alla tua attività configurata
+          </button>
+        )}
+        <RestaurantSearch
+          platform={connection.platform}
+          onConnect={onConnect}
+        />
+      </div>
     );
   }
 

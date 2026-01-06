@@ -40,6 +40,19 @@ export interface BepConfig {
   deliveryIncidence?: number;
 }
 
+export interface BusinessConfig {
+  name: string;
+  address: string;
+  city: string;
+  phone?: string;
+  email?: string;
+  googlePlaceId?: string;
+  tripadvisorId?: string;
+  tripadvisorUrl?: string;
+  googleUrl?: string;
+  website?: string;
+}
+
 export interface UserData {
   firstName: string;
   lastName: string;
@@ -47,6 +60,7 @@ export interface UserData {
   email: string;
   foodCostThreshold: number;
   bepConfig: BepConfig;
+  businessConfig?: BusinessConfig;
 }
 
 export interface Ingredient {
@@ -123,6 +137,13 @@ export interface SubRecipe {
   portionWeight?: number; // Peso porzione in grammi (per ricette laboratorio)
   shelfLife?: number; // Durata del prodotto in giorni una volta messo nei contenitori di linea
   fifoLabel?: boolean; // Flag per creare etichetta FIFO
+  // Dati completi del calcolatore avanzato (opzionale, solo per ricette create con AdvancedDoughCalculator)
+  advancedCalculatorData?: {
+    hydration: number;
+    calculation: any; // DoughCalculationResult
+    management?: any; // Management data (preferment, autolysis, mixing, puntata, appretto, cooking)
+    preferment?: any; // Preferment data
+  };
 }
 
 export interface MenuItem {

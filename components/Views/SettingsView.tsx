@@ -1,29 +1,37 @@
 import React, { useState } from 'react';
-import { Settings, ChevronRight, Beaker, BarChart3, Users, Truck } from 'lucide-react';
+import { Settings, ChevronRight, Beaker, BarChart3, Users, Truck, Store } from 'lucide-react';
 import AssetsView from './AssetsView';
 import StaffView from './StaffView';
 import SuppliersView from './SuppliersView';
 import PrefermentiView, { Preferment } from './PrefermentiView';
-import { UserData, Employee, Supplier } from '../../types';
+import BusinessSettingsView from './BusinessSettingsView';
+import { UserData, Employee, Supplier, BusinessConfig, PlatformConnection } from '../../types';
 
 interface SettingsViewProps {
   userData: UserData;
   employees: Employee[];
   suppliers: Supplier[];
+  platformConnections: {
+    tripadvisor: PlatformConnection;
+    google: PlatformConnection;
+  };
   onUpdateBep: (config: any) => Promise<void>;
   onSaveEmployee: (emp: Employee) => Promise<string | undefined>;
   onDeleteEmployee: (id: string) => Promise<void>;
   onSaveSupplier: (sup: Supplier) => Promise<string | undefined>;
   onDeleteSupplier: (id: string) => Promise<void>;
-  initialSubSection?: 'prefermenti' | 'assets' | 'staff' | 'suppliers' | null;
+  onSaveBusinessConfig: (config: BusinessConfig) => Promise<void>;
+  onDisconnectPlatform: (platform: 'tripadvisor' | 'google') => Promise<void>;
+  initialSubSection?: 'prefermenti' | 'assets' | 'staff' | 'suppliers' | 'business' | null;
 }
 
-type SettingsSubSection = 'prefermenti' | 'assets' | 'staff' | 'suppliers' | null;
+type SettingsSubSection = 'prefermenti' | 'assets' | 'staff' | 'suppliers' | 'business' | null;
 
 const SettingsView: React.FC<SettingsViewProps> = ({
   userData,
   employees,
   suppliers,
+  platformConnections,
   preferments = [],
   onUpdateBep,
   onSaveEmployee,
@@ -32,11 +40,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onDeleteSupplier,
   onSavePreferment,
   onDeletePreferment,
+  onSaveBusinessConfig,
+  onDisconnectPlatform,
   initialSubSection = null
 }) => {
   const [activeSubSection, setActiveSubSection] = useState<SettingsSubSection>(initialSubSection || null);
 
   const subSections = [
+    { id: 'business' as SettingsSubSection, label: 'La Tua Attività', icon: Store },
     { id: 'prefermenti' as SettingsSubSection, label: 'Prefermenti', icon: Beaker },
     { id: 'assets' as SettingsSubSection, label: 'Costi e Asset', icon: BarChart3 },
     { id: 'staff' as SettingsSubSection, label: 'Staff', icon: Users },
@@ -53,6 +64,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   if (activeSubSection) {
     return (
       <div className="space-y-6">
+
+        {activeSubSection === 'business' && (
+          <BusinessSettingsView
+            businessConfig={userData.businessConfig}
+            platformConnections={platformConnections}
+            onSave={onSaveBusinessConfig}
+            onDisconnectPlatform={onDisconnectPlatform}
+          />
+        )}
 
         {activeSubSection === 'prefermenti' && (
           <PrefermentiView
@@ -120,6 +140,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <h3 className="text-lg font-black text-black mb-2">{section.label}</h3>
                 <p className="text-xs text-gray-400 font-semibold">
+                  {section.id === 'business' && 'Configura nome, indirizzo e collegamenti Google/TripAdvisor'}
                   {section.id === 'prefermenti' && 'Configura i prefermenti predefiniti'}
                   {section.id === 'assets' && 'Gestisci costi fissi e parametri variabili'}
                   {section.id === 'staff' && 'Gestisci collaboratori e dipendenti'}

@@ -338,3 +338,4 @@ const ScanView: React.FC<ScanViewProps> = ({
 
 export default ScanView;
 
+
