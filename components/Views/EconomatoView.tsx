@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, Edit2, Plus, Trash2, X, AlertTriangle, PlusCircle, Check, Loader2, Tag, Truck, Calendar, Save, Phone, FileDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Edit2, Plus, Trash2, X, AlertTriangle, PlusCircle, Check, Loader2, Tag, Truck, Calendar, Save, Phone, Upload, FileText } from 'lucide-react';
 import { Ingredient, Unit, Supplier } from '../../types';
-import CSVImportExport from '../CSVImportExport';
 import { normalizeText } from '../../utils/textUtils';
 
 interface EconomatoViewProps {
@@ -23,7 +22,18 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
   const [isAdding, setIsAdding] = useState(false);
   const [form, setForm] = useState<Partial<Ingredient>>({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [showCSVPanel, setShowCSVPanel] = useState(false);
+  
+  // CSV Import states
+  interface CSVRow {
+    nome?: string;
+    unita?: string;
+    prezzo_per_unita?: string;
+    categoria?: string;
+    fornitore?: string;
+  }
+  const [csvImportMode, setCsvImportMode] = useState<'upload' | 'preview' | null>(null);
+  const [csvData, setCsvData] = useState<CSVRow[]>([]);
+  const [autoCreateCategories, setAutoCreateCategories] = useState(false);
 
   // Gestione Nuova Categoria nel Form
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
@@ -72,10 +82,111 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     }
   };
 
-  const handleBulkImport = async (ingredientsToImport: Ingredient[]) => {
-    for (const ingredient of ingredientsToImport) {
-      await onAdd(ingredient);
+  // CSV Import functions
+  const parseCSV = (text: string): CSVRow[] => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return [];
+    
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, '_').replace(/"/g, ''));
+    const expectedHeaders = ['nome', 'unita', 'prezzo_per_unita', 'categoria', 'fornitore'];
+    
+    // Validate headers
+    const missingHeaders = expectedHeaders.filter(h => !headers.includes(h));
+    if (missingHeaders.length > 0) {
+      throw new Error(`Header mancanti: ${missingHeaders.join(', ')}`);
     }
+    
+    const data: CSVRow[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      if (values.length < headers.length) continue;
+      
+      const row: CSVRow = {};
+      headers.forEach((header, idx) => {
+        row[header as keyof CSVRow] = values[idx] || '';
+      });
+      data.push(row);
+    }
+    
+    return data;
+  };
+
+  const handleCSVUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const parsed = parseCSV(text);
+        
+        if (parsed.length === 0) {
+          alert('Il file CSV è vuoto o non valido');
+          return;
+        }
+        
+        setCsvData(parsed);
+        setCsvImportMode('preview');
+      } catch (error) {
+        alert(`Errore nel parsing del CSV: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDownloadExampleCSV = () => {
+    const exampleData = [
+      ['nome', 'unita', 'prezzo_per_unita', 'categoria', 'fornitore'],
+      ['Farina Tipo 00', 'kg', '1.20', 'Farine', 'Global Food S.p.A.'],
+      ['Mozzarella di Bufala', 'kg', '12.50', 'Latticini', 'Caseificio Valfiorita'],
+      ['Pomodoro San Marzano', 'kg', '3.80', 'Conserve', 'Orti del Sud'],
+      ['Olio Extravergine', 'l', '8.50', 'Condimenti', ''],
+      ['Sale Fino', 'kg', '0.90', 'Condimenti', ''],
+    ];
+
+    const csvContent = exampleData.map(row => row.join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'esempio_economato_import.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleConfirmImport = () => {
+    const existingSupplierNames = new Map(suppliers.map(s => [s.name.toLowerCase(), s.id]));
+    
+    csvData.forEach(row => {
+      const supplierName = row.fornitore?.trim();
+      const supplierId = supplierName ? existingSupplierNames.get(supplierName.toLowerCase()) : undefined;
+      
+      const category = row.categoria?.trim() || 'Generica';
+      const name = normalizeText(row.nome?.trim() || '');
+      const unit = (row.unita?.trim().toLowerCase() || 'kg') as Unit;
+      const price = parseFloat(row.prezzo_per_unita?.replace(',', '.') || '0');
+      
+      if (!name || price <= 0) return;
+      
+      const ingredient: Ingredient = {
+        id: '',
+        name,
+        category,
+        unit: ['kg', 'g', 'l', 'ml', 'unit', 'pz'].includes(unit) ? unit : 'kg',
+        pricePerUnit: price,
+        ...(supplierId && { supplierId: supplierId as string })
+      };
+      
+      onAdd(ingredient);
+    });
+    
+    alert(`✅ Import completato! ${csvData.length} ingredient${csvData.length > 1 ? 'i' : 'e'} importat${csvData.length > 1 ? 'i' : 'o'}.`);
+    setCsvImportMode(null);
+    setCsvData([]);
   };
 
 
@@ -224,8 +335,133 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     </div>
   );
 
+  const renderCSVImportDialogs = () => (
+    <>
+      {/* Upload Dialog */}
+      {csvImportMode === 'upload' && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6">
+            <div className="text-center">
+              <Upload className="mx-auto text-blue-500 mb-4" size={48} />
+              <h3 className="text-2xl font-black text-black mb-2">Importa CSV Economato</h3>
+              <p className="text-sm text-gray-500 font-semibold">
+                Carica un file CSV con la struttura: nome, unita, prezzo_per_unita, categoria, fornitore
+              </p>
+            </div>
+            <div className="space-y-4">
+              <button
+                onClick={handleDownloadExampleCSV}
+                className="w-full bg-blue-50 border border-blue-200 text-blue-600 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors"
+              >
+                <FileText size={18} />
+                Scarica CSV di Esempio
+              </button>
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVUpload}
+                  className="hidden"
+                />
+                <div className="w-full bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center cursor-pointer hover:border-blue-500 transition-colors">
+                  <FileText className="mx-auto mb-3 text-gray-400" size={32} />
+                  <p className="text-sm font-bold text-gray-600">Clicca per selezionare file CSV</p>
+                </div>
+              </label>
+            </div>
+            <button
+              onClick={() => setCsvImportMode(null)}
+              className="w-full py-4 bg-gray-100 text-gray-600 rounded-2xl font-black"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Dialog */}
+      {csvImportMode === 'preview' && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-3xl rounded-[2.5rem] p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="text-center">
+              <Check className="mx-auto text-green-500 mb-4" size={48} />
+              <h3 className="text-2xl font-black text-black mb-2">Anteprima Import</h3>
+              <p className="text-sm text-gray-500 font-semibold">
+                {csvData.length} ingredient{csvData.length > 1 ? 'i' : 'e'} pront{csvData.length > 1 ? 'i' : 'o'} per l'import
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={autoCreateCategories}
+                  onChange={e => setAutoCreateCategories(e.target.checked)}
+                  className="w-5 h-5 rounded"
+                />
+                <span className="text-sm font-bold text-gray-700">Crea nuove categorie automaticamente</span>
+              </label>
+
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {(() => {
+                  const grouped = csvData.reduce((acc, row) => {
+                    const cat = row.categoria?.trim() || 'Generica';
+                    if (!acc[cat]) acc[cat] = [];
+                    acc[cat].push(row);
+                    return acc;
+                  }, {} as Record<string, CSVRow[]>);
+
+                  return Object.entries(grouped).map(([category, items]: [string, CSVRow[]]) => (
+                    <div key={category} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <h4 className="font-black text-sm text-black mb-3 uppercase">{category}</h4>
+                      <div className="space-y-2">
+                        {items.map((item, idx) => (
+                          <div key={idx} className="bg-white rounded-xl p-3 flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-sm text-black">{item.nome}</p>
+                              {item.fornitore && (
+                                <p className="text-xs text-gray-500 font-semibold">Fornitore: {item.fornitore}</p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <span className="font-black text-sm text-green-600 block">€{parseFloat(item.prezzo_per_unita?.replace(',', '.') || '0').toFixed(2)}</span>
+                              <span className="text-xs text-gray-400 font-semibold">/{item.unita?.toUpperCase()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => {
+                  setCsvImportMode(null);
+                  setCsvData([]);
+                }}
+                className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                className="flex-1 bg-black text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+              >
+                Conferma e Importa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+      {csvImportMode && renderCSVImportDialogs()}
       {/* Modale Form */}
       {(isAdding || editingId) && renderForm()}
 
@@ -246,28 +482,6 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
         </div>
       )}
 
-      {/* CSV Import/Export Panel */}
-      <div className="px-2">
-        <button
-          onClick={() => setShowCSVPanel(!showCSVPanel)}
-          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-2xl font-black shadow-xl hover:shadow-md active:scale-95 transition-all flex items-center justify-center space-x-2"
-        >
-          <FileDown size={18} />
-          <span>Import/Export CSV</span>
-          {showCSVPanel ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-        </button>
-        
-        {showCSVPanel && (
-          <div className="mt-4 animate-in slide-in-from-top duration-300">
-            <CSVImportExport 
-              ingredients={ingredients} 
-              suppliers={suppliers} 
-              onImport={handleBulkImport}
-            />
-          </div>
-        )}
-      </div>
-
       <div className="space-y-4 px-2">
         <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
           {allCategories.map((cat) => (
@@ -277,7 +491,12 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
         <div className="relative">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input type="text" placeholder="Cerca..." className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          <button onClick={() => { setIsAdding(true); setEditingId(null); setForm({ unit: 'kg', supplierId: '', name: '', category: '', pricePerUnit: 0 }); }} className="absolute right-5 top-1/2 -translate-y-1/2 bg-black text-white p-2 rounded-xl shadow-sm active:scale-90 transition-transform"><Plus size={16} /></button>
+          <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+            <button onClick={() => setCsvImportMode('upload')} className="bg-blue-600 text-white p-2 rounded-xl shadow-sm active:scale-90 transition-transform" title="Importa CSV">
+              <Upload size={16} />
+            </button>
+            <button onClick={() => { setIsAdding(true); setEditingId(null); setForm({ unit: 'kg', supplierId: '', name: '', category: '', pricePerUnit: 0 }); }} className="bg-black text-white p-2 rounded-xl shadow-sm active:scale-90 transition-transform"><Plus size={16} /></button>
+          </div>
         </div>
       </div>
 
@@ -300,10 +519,10 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
                 <span>Aggiungi Manualmente</span>
               </button>
               <button
-                onClick={() => setShowCSVPanel(true)}
+                onClick={() => setCsvImportMode('upload')}
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center space-x-2"
               >
-                <FileDown size={18} />
+                <Upload size={18} />
                 <span>Importa da CSV</span>
               </button>
             </div>

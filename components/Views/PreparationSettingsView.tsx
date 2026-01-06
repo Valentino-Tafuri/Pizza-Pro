@@ -1,47 +1,63 @@
-import React from 'react';
-import { ToggleLeft, ToggleRight } from 'lucide-react';
-import { Preparation } from '../../types';
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+import { Preparation, FifoLabel } from '../../types';
+import FifoLabelsView from './FifoLabelsView';
 
 interface PreparationSettingsViewProps {
   preparations: Preparation[];
-  onToggleActive: (id: string, isActive: boolean) => void;
+  onGenerateLabels: (labels: FifoLabel[]) => Promise<void>;
 }
 
 const PreparationSettingsView: React.FC<PreparationSettingsViewProps> = ({
   preparations,
-  onToggleActive
+  onGenerateLabels
 }) => {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-black text-black mb-2">Preparazioni Magazzino</h2>
-        <p className="text-gray-600 font-semibold">
-          Attiva le preparazioni da gestire nel magazzino FIFO
-        </p>
-      </div>
+  const [selectedPrepId, setSelectedPrepId] = useState<string | null>(null);
 
-      <div className="space-y-3">
-        {preparations.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
-            <p className="text-gray-400 font-semibold">
-              Nessuna preparazione disponibile. Crea prima una preparazione in LabView.
-            </p>
-          </div>
-        ) : (
-          preparations.map(prep => (
-            <div
-              key={prep.id}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow"
-            >
-              <div className="flex-1">
-                <h3 className="font-black text-lg text-black mb-1">{prep.name}</h3>
-                <p className="text-sm text-gray-500 font-semibold">
-                  {prep.category}
-                  {prep.isActive && (
+  // Filtra solo le preparazioni con fifoLabel: true (sono automaticamente attive)
+  const fifoPreparations = preparations.filter(prep => prep.fifoLabel === true);
+
+  // Tutte le preparazioni con fifoLabel sono automaticamente attive
+  const activeFifoPreparations = fifoPreparations;
+
+  const handlePrepClick = (prepId: string) => {
+    setSelectedPrepId(prepId);
+  };
+
+  const handleClosePopup = () => {
+    setSelectedPrepId(null);
+  };
+
+  return (
+    <>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-black text-black mb-2">Preparazioni Magazzino</h2>
+          <p className="text-gray-600 font-semibold">
+            Preparazioni con etichetta FIFO attiva
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {fifoPreparations.length === 0 ? (
+            <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
+              <p className="text-gray-400 font-semibold">
+                Nessuna preparazione con etichetta FIFO. Attiva "Crea Etichetta FIFO" in LabView.
+              </p>
+            </div>
+          ) : (
+            fifoPreparations.map(prep => (
+              <div
+                key={prep.id}
+                onClick={() => handlePrepClick(prep.id)}
+                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer"
+              >
+                <div className="flex-1">
+                  <h3 className="font-black text-lg text-black mb-1">{prep.name}</h3>
+                  <p className="text-sm text-gray-500 font-semibold">
+                    {prep.category}
                     <span className="ml-2 text-green-600 font-black">• Attivo in magazzino</span>
-                  )}
-                </p>
-                {prep.isActive && (
+                  </p>
                   <div className="mt-2 flex items-center gap-4 text-xs">
                     <span className="text-gray-400 font-semibold">
                       Stock: <span className="font-black text-black">{prep.currentStock}</span> {prep.unit}
@@ -50,41 +66,47 @@ const PreparationSettingsView: React.FC<PreparationSettingsViewProps> = ({
                       Min: <span className="font-black text-black">{prep.minStock}</span> {prep.unit}
                     </span>
                   </div>
-                )}
+                </div>
               </div>
+            ))
+          )}
+        </div>
 
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+          <p className="text-sm text-blue-800 font-semibold">
+            💡 <strong>Clicca su una preparazione</strong> per generare le etichette FIFO.
+            Attiva "Crea Etichetta FIFO" in LabView per vedere le preparazioni qui.
+          </p>
+        </div>
+      </div>
+
+      {/* Popup con FifoLabelsView */}
+      {selectedPrepId && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h3 className="text-2xl font-black text-black">Genera Etichette FIFO</h3>
               <button
-                onClick={() => onToggleActive(prep.id, !prep.isActive)}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black transition-all active:scale-95 ${
-                  prep.isActive
-                    ? 'bg-green-500 text-white hover:bg-green-600 shadow-lg'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                onClick={handleClosePopup}
+                className="bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition-colors"
               >
-                {prep.isActive ? (
-                  <>
-                    <ToggleRight size={24} />
-                    ATTIVO
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft size={24} />
-                    DISATTIVO
-                  </>
-                )}
+                <X size={20} />
               </button>
             </div>
-          ))
-        )}
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
-        <p className="text-sm text-blue-800 font-semibold">
-          💡 <strong>Attiva le preparazioni</strong> che vuoi gestire con il sistema FIFO.
-          Solo le preparazioni attive saranno disponibili per etichette e magazzino.
-        </p>
-      </div>
-    </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <FifoLabelsView
+                preparations={activeFifoPreparations}
+                onGenerateLabels={async (labels) => {
+                  await onGenerateLabels(labels);
+                  // Non chiudere il popup automaticamente per permettere la stampa
+                }}
+                initialPreparationId={selectedPrepId}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

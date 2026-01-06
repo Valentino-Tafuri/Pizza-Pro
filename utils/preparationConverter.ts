@@ -33,7 +33,9 @@ export const getActivePreparations = (
       minStock: 5, 
       currentStock: 0 
     };
-    return convertSubRecipeToPreparation(sr, settings.isActive, settings.minStock, settings.currentStock);
+    // Se fifoLabel è true, la preparazione è automaticamente attiva
+    const isActive = sr.fifoLabel === true ? true : settings.isActive;
+    return convertSubRecipeToPreparation(sr, isActive, settings.minStock, settings.currentStock);
   });
 };
 

@@ -31,10 +31,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
 
   // Auto-expand inventario menu when a sub-section is active
   useEffect(() => {
-    if (activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'scan' ||
+    if (activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'custom-labels' || activeView === 'scan' ||
         activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan') {
       setIsInventarioExpanded(true);
-    } else if (activeView !== 'prep-settings' && activeView !== 'warehouse' && activeView !== 'fifo-labels' && activeView !== 'scan' &&
+    } else if (activeView !== 'prep-settings' && activeView !== 'warehouse' && activeView !== 'fifo-labels' && activeView !== 'custom-labels' && activeView !== 'scan' &&
                activeView !== 'inventario-magazzino' && activeView !== 'inventario-etichette' && activeView !== 'inventario-scan') {
       setIsInventarioExpanded(false);
     }
@@ -69,9 +69,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
           icon: Warehouse,
           hasSubmenu: true,
           subItems: [
-            { id: 'prep-settings' as ViewType, label: 'Attiva Preparazioni', icon: Package },
+            { id: 'prep-settings' as ViewType, label: 'Etichette FIFO', icon: Tag },
             { id: 'warehouse' as ViewType, label: 'Magazzino', icon: Warehouse },
-            { id: 'fifo-labels' as ViewType, label: 'Etichette FIFO', icon: Tag },
+            { id: 'custom-labels' as ViewType, label: 'Etichette Personalizzate', icon: Tag },
             { id: 'scan' as ViewType, label: 'Scan', icon: ScanBarcode },
           ]
         },
@@ -137,7 +137,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const isSettingsSubActive = activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers' || activeView === 'profile';
-                  const isInventarioSubActive = activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'scan' ||
+                  const isInventarioSubActive = activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'custom-labels' || activeView === 'scan' ||
                     activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan';
                   const isMarketingSubActive = activeView === 'marketing-overview' || activeView === 'marketing-tripadvisor' || activeView === 'marketing-google';
                   const isActive = activeView === item.id || (item.hasSubmenu && item.id === 'settings' && isSettingsSubActive) || (item.hasSubmenu && item.id === 'inventario' && isInventarioSubActive) || (item.hasSubmenu && item.id === 'marketing' && isMarketingSubActive);

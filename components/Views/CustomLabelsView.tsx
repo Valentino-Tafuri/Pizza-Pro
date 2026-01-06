@@ -1,54 +1,21 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Minus, Printer, Info, QrCode } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Minus, Printer, QrCode } from 'lucide-react';
 import QRCode from 'qrcode';
-import { Preparation, FifoLabel } from '../../types';
 
-interface FifoLabelsViewProps {
-  preparations: Preparation[];
-  onGenerateLabels: (labels: FifoLabel[]) => Promise<void>;
-  initialPreparationId?: string;
+interface CustomLabel {
+  id: string;
+  productName: string;
+  expiryDate: Date;
+  qrCode: string;
 }
 
-const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({ 
-  preparations, 
-  onGenerateLabels,
-  initialPreparationId 
-}) => {
-  const [selectedPrepId, setSelectedPrepId] = useState<string>(initialPreparationId || '');
+const CustomLabelsView: React.FC = () => {
+  const [productName, setProductName] = useState<string>('');
   const [expiryDate, setExpiryDate] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
-  const [generatedLabels, setGeneratedLabels] = useState<FifoLabel[]>([]);
+  const [generatedLabels, setGeneratedLabels] = useState<CustomLabel[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
-
-  // Imposta data di default (oggi + 3 giorni) quando viene selezionata una preparazione
-  useEffect(() => {
-    if (selectedPrepId && !expiryDate) {
-      const defaultDate = new Date();
-      defaultDate.setDate(defaultDate.getDate() + 3);
-      setExpiryDate(defaultDate.toISOString().split('T')[0]);
-    }
-  }, [selectedPrepId, expiryDate]);
-
-  // Pre-seleziona la preparazione se viene passata initialPreparationId
-  useEffect(() => {
-    if (initialPreparationId && initialPreparationId !== selectedPrepId) {
-      setSelectedPrepId(initialPreparationId);
-    }
-  }, [initialPreparationId]);
-
-  // Debug: log delle preparazioni ricevute
-  useEffect(() => {
-    console.log('[FifoLabelsView] Preparazioni ricevute:', preparations);
-    console.log('[FifoLabelsView] Numero preparazioni attive:', preparations.length);
-    preparations.forEach(prep => {
-      console.log(`[FifoLabelsView] - ${prep.name} (ID: ${prep.id}, Active: ${prep.isActive})`);
-    });
-  }, [preparations]);
-
-  const selectedPrep = useMemo(() => {
-    return preparations.find(p => p.id === selectedPrepId);
-  }, [preparations, selectedPrepId]);
 
   const minDate = new Date().toISOString().split('T')[0];
 
@@ -65,76 +32,48 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
     }
   };
 
-  const extractBarcode = (labelId: string): string => {
-    // Estrai solo numeri da labelId, max 13 digit (EAN-13 compatible)
-    const numbers = labelId.replace(/\D/g, '');
-    return numbers.slice(0, 13).padStart(13, '0');
-  };
-
   const handleGenerate = async () => {
-    if (!selectedPrep || !expiryDate) {
-      alert('Seleziona una preparazione e una data di scadenza');
+    if (!productName || !expiryDate) {
+      alert('Inserisci nome prodotto e data di scadenza');
       return;
     }
 
     setIsGenerating(true);
     try {
-      console.log('[FifoLabelsView] Inizio generazione etichette:', {
-        preparation: selectedPrep.name,
-        preparationId: selectedPrep.id,
-        quantity,
-        expiryDate
-      });
-
-      const labels: FifoLabel[] = [];
+      const labels: CustomLabel[] = [];
       const timestamp = Date.now();
 
       for (let i = 0; i < quantity; i++) {
-        const labelId = `${selectedPrep.id}_${timestamp}_${i}`;
-        const qrData = `FIFO:${labelId}`;
-        
-        console.log(`[FifoLabelsView] Generazione etichetta ${i + 1}/${quantity}:`, labelId);
+        const labelId = `CUSTOM_${timestamp}_${i}`;
+        const qrData = `CUSTOM:${labelId}:${productName}`;
         
         const qrCodeImage = await generateQRCode(qrData);
         
         if (!qrCodeImage) {
           throw new Error(`Errore generazione QR code per etichetta ${i + 1}`);
         }
-        
-        const barcode = extractBarcode(labelId);
 
-        const label: FifoLabel = {
+        const label: CustomLabel = {
           id: labelId,
-          preparationId: selectedPrep.id,
-          preparationName: selectedPrep.name,
-          qrCode: qrCodeImage,
-          barcode: barcode,
+          productName: productName,
           expiryDate: new Date(expiryDate),
-          createdAt: new Date(),
-          createdBy: '', // Sarà popolato in App.tsx
-          status: 'active'
+          qrCode: qrCodeImage
         };
 
         labels.push(label);
-        console.log(`[FifoLabelsView] Etichetta ${i + 1} creata:`, {
-          id: label.id,
-          name: label.preparationName,
-          qrCodeLength: label.qrCode.length
-        });
       }
 
-      console.log('[FifoLabelsView] Tutte le etichette generate, salvataggio...', labels.length);
-      await onGenerateLabels(labels);
-      
-      console.log('[FifoLabelsView] Etichette salvate con successo');
       setGeneratedLabels(labels);
       setShowPrintPreview(true);
+      setProductName('');
+      setExpiryDate('');
+      setQuantity(1);
       
       alert(`✅ ${quantity} etichetta${quantity > 1 ? 'e' : ''} generate con successo!\n\nPuoi ora stamparle cliccando sul pulsante "Stampa".`);
     } catch (error) {
-      console.error('[FifoLabelsView] Errore generazione etichette:', error);
+      console.error('Errore generazione etichette:', error);
       const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
-      alert(`❌ Errore durante la generazione delle etichette:\n${errorMessage}\n\nControlla la console per maggiori dettagli.`);
+      alert(`❌ Errore durante la generazione delle etichette:\n${errorMessage}`);
     } finally {
       setIsGenerating(false);
     }
@@ -148,35 +87,21 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
     <div className="space-y-6">
       {/* Form Generazione */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="text-xl font-black text-black mb-6">Genera Etichette FIFO</h3>
+        <h3 className="text-xl font-black text-black mb-6">Etichette Personalizzate</h3>
         
         <div className="space-y-4">
-          {/* Selezione Preparazione */}
+          {/* Nome Prodotto */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">
-              Preparazione
+              Nome Prodotto
             </label>
-            <select
-              value={selectedPrepId}
-              onChange={(e) => setSelectedPrepId(e.target.value)}
+            <input
+              type="text"
+              value={productName}
+              onChange={(e) => setProductName(e.target.value)}
+              placeholder="Es: Crema di cime di rapa"
               className="w-full bg-white border border-gray-200 rounded-xl py-4 px-4 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-black"
-            >
-              <option value="">Seleziona preparazione...</option>
-              {preparations.length === 0 ? (
-                <option value="" disabled>Nessuna preparazione attiva. Attiva "Crea Etichetta FIFO" in LabView.</option>
-              ) : (
-                preparations.map(prep => (
-                  <option key={prep.id} value={prep.id}>
-                    {prep.name} (Stock: {prep.currentStock} {prep.unit})
-                  </option>
-                ))
-              )}
-            </select>
-            {preparations.length === 0 && (
-              <p className="text-xs font-semibold text-gray-500 mt-2">
-                💡 Attiva "Crea Etichetta FIFO" su una preparazione in LabView per vederla qui.
-              </p>
-            )}
+            />
           </div>
 
           {/* Data Scadenza */}
@@ -223,26 +148,21 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
                 <Plus size={20} />
               </button>
             </div>
-            {selectedPrep && (
-              <p className="text-xs font-semibold text-gray-500 mt-2">
-                Stock verrà incrementato di {quantity} {selectedPrep.unit}
-              </p>
-            )}
           </div>
 
           {/* Pulsante Genera */}
           <div className="space-y-2">
             <button
               onClick={handleGenerate}
-              disabled={!selectedPrep || !expiryDate || isGenerating}
+              disabled={!productName || !expiryDate || isGenerating}
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl py-4 px-6 text-sm font-black uppercase transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
               {isGenerating ? 'Generazione in corso...' : `Genera ${quantity} Etichetta${quantity > 1 ? 'e' : ''}`}
             </button>
-            {(!selectedPrep || !expiryDate) && (
+            {(!productName || !expiryDate) && (
               <p className="text-xs font-semibold text-red-600 text-center">
-                {!selectedPrep && '⚠️ Seleziona una preparazione'}
-                {selectedPrep && !expiryDate && '⚠️ Inserisci la data di scadenza'}
+                {!productName && '⚠️ Inserisci il nome del prodotto'}
+                {productName && !expiryDate && '⚠️ Inserisci la data di scadenza'}
               </p>
             )}
           </div>
@@ -252,15 +172,13 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
       {/* Info Box */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
         <div className="flex items-start gap-3">
-          <Info className="text-blue-600 flex-shrink-0 mt-1" size={20} />
+          <QrCode className="text-blue-600 flex-shrink-0 mt-1" size={20} />
           <div>
-            <h4 className="text-sm font-black text-blue-900 mb-2">Istruzioni</h4>
-            <ul className="text-xs font-semibold text-blue-800 space-y-1 list-disc list-inside">
-              <li>Seleziona la preparazione e la data di scadenza</li>
-              <li>Genera le etichette necessarie (max 50 per volta)</li>
-              <li>Stampa le etichette e applicale ai contenitori</li>
-              <li>Scansiona il QR code per scaricare il prodotto</li>
-            </ul>
+            <h4 className="text-sm font-black text-blue-900 mb-2">Etichette Personalizzate</h4>
+            <p className="text-xs font-semibold text-blue-800">
+              Queste etichette sono solo per stampa. Non vengono conteggiate nel magazzino.
+              Inserisci nome prodotto e data di scadenza, poi genera e stampa.
+            </p>
           </div>
         </div>
       </div>
@@ -311,14 +229,11 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
                     <div className="flex-1 flex flex-col justify-between text-xs">
                       <div>
                         <h4 className="font-black text-black mb-1 text-[10px] uppercase">
-                          {label.preparationName}
+                          {label.productName}
                         </h4>
-                        <p className="text-[8px] text-gray-600 mb-1">
-                          Creato: {(label.createdAt?.toDate?.() || new Date(label.createdAt)).toLocaleDateString('it-IT')}
-                        </p>
                         <div className="bg-red-100 border border-red-300 rounded px-2 py-1 mb-1">
                           <p className="text-[8px] font-black text-red-700">
-                            SCADENZA: {(label.expiryDate?.toDate?.() || new Date(label.expiryDate)).toLocaleDateString('it-IT')}
+                            SCADENZA: {label.expiryDate.toLocaleDateString('it-IT')}
                           </p>
                         </div>
                         <p className="text-[7px] text-gray-400">
@@ -381,5 +296,5 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
   );
 };
 
-export default FifoLabelsView;
+export default CustomLabelsView;
 

@@ -15,6 +15,7 @@ import SettingsView from './components/Views/SettingsView';
 import ProfileView from './components/Views/ProfileView';
 import WarehouseView from './components/Views/WarehouseView';
 import FifoLabelsView from './components/Views/FifoLabelsView';
+import CustomLabelsView from './components/Views/CustomLabelsView';
 import ScanView from './components/Views/ScanView';
 import StockAlerts from './components/StockAlerts';
 import PreparationSettingsView from './components/Views/PreparationSettingsView';
@@ -403,6 +404,11 @@ const App: React.FC = () => {
         onDelete={(id) => handleDelete('menu', id)} 
         onAddIngredient={(ing) => handleSave('ingredients', ing)} 
         onAddSupplier={(s) => handleSave('suppliers', s)} 
+        onAddSubRecipe={async (sub) => {
+          const id = await handleSave('subRecipes', sub);
+          return id || sub.id;
+        }}
+        onNavigateToLab={() => setActiveView('lab')}
       />;
       case 'laboratorio': return <LabCalculatorView 
         ingredients={ingredients} 
@@ -435,6 +441,8 @@ const App: React.FC = () => {
           preparations={activePreparations}
           onGenerateLabels={handleGenerateLabels}
         />;
+      case 'custom-labels':
+        return <CustomLabelsView />;
       case 'inventario-scan':
       case 'scan': 
         return <ScanView 
@@ -519,7 +527,7 @@ const App: React.FC = () => {
       />;
       case 'prep-settings': return <PreparationSettingsView 
         preparations={preparations}
-        onToggleActive={handleTogglePreparation}
+        onGenerateLabels={handleGenerateLabels}
       />;
       case 'marketing-overview': return <MarketingOverview 
         tripAdvisorConnection={platformConnections.tripadvisor}
@@ -597,6 +605,7 @@ const App: React.FC = () => {
       'inventario-scan': 'SCAN',
       'warehouse': 'MAGAZZINO',
       'fifo-labels': 'ETICHETTE FIFO',
+      'custom-labels': 'ETICHETTE PERSONALIZZATE',
       'scan': 'SCAN',
       'prep-settings': 'ATTIVA PREPARAZIONI',
       'settings': 'IMPOSTAZIONI',

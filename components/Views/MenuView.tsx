@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, X, Edit2, Trash2, Loader2, Wand2, BrainCircuit, ClipboardList, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Search, Plus, X, Edit2, Trash2, Loader2, Wand2, BrainCircuit, ClipboardList, ArrowRight, AlertTriangle, Upload, FileText, Check } from 'lucide-react';
 import { MenuItem, Ingredient, SubRecipe, ComponentUsage, Unit, Supplier, UserData } from '../../types';
 import { normalizeText } from '../../utils/textUtils';
 
@@ -19,9 +19,11 @@ interface MenuViewProps {
   onDelete?: (id: string) => void;
   onAddIngredient: (ingredient: Ingredient) => Promise<string | undefined>;
   onAddSupplier?: (supplier: Supplier) => Promise<string | undefined>;
+  onAddSubRecipe?: (subRecipe: SubRecipe) => Promise<string | undefined>;
+  onNavigateToLab?: () => void;
 }
 
-const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, suppliers, userData, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier }) => {
+const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, suppliers, userData, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier, onAddSubRecipe, onNavigateToLab }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [creationMode, setCreationMode] = useState<'choice' | 'manual' | 'ai' | null>(null);
@@ -50,6 +52,23 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  
+  // CSV Import states
+  interface CSVRow {
+    categoria?: string;
+    nome_portata?: string;
+    descrizione?: string;
+    prezzo?: string;
+    topping_collegato?: string;
+    disponibile?: string;
+    allergeni?: string;
+  }
+  const [csvImportMode, setCsvImportMode] = useState<'upload' | 'missing-toppings' | 'preview' | null>(null);
+  const [csvData, setCsvData] = useState<CSVRow[]>([]);
+  const [missingToppings, setMissingToppings] = useState<{name: string; usedIn: {name: string; price: number}[]}[]>([]);
+  const [currentMissingToppingIdx, setCurrentMissingToppingIdx] = useState(0);
+  const [newToppingForm, setNewToppingForm] = useState<Partial<SubRecipe>>({ components: [], initialWeight: 1, yieldWeight: 1, category: '' });
+  const [autoCreateCategories, setAutoCreateCategories] = useState(false);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -165,6 +184,164 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
         setCreationMode('manual');
       }
     }
+  };
+
+  // CSV Import functions
+  const parseCSV = (text: string): any[] => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return [];
+    
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const expectedHeaders = ['categoria', 'nome_portata', 'descrizione', 'prezzo', 'topping_collegato', 'disponibile', 'allergeni'];
+    
+    // Validate headers
+    const missingHeaders = expectedHeaders.filter(h => !headers.includes(h));
+    if (missingHeaders.length > 0) {
+      throw new Error(`Header mancanti: ${missingHeaders.join(', ')}`);
+    }
+    
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim());
+      if (values.length < headers.length) continue;
+      
+      const row: any = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
+      });
+      data.push(row);
+    }
+    
+    return data;
+  };
+
+  const handleCSVUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const parsed = parseCSV(text);
+        
+        if (parsed.length === 0) {
+          alert('Il file CSV è vuoto o non valido');
+          return;
+        }
+        
+        setCsvData(parsed);
+        
+        // Check for missing toppings
+        const toppingsInCsv = new Set(parsed.map(row => row.topping_collegato?.trim()).filter(Boolean));
+        const existingToppingNames = new Set(subRecipes.map(sr => sr.name.toLowerCase()));
+        
+        const missing: {name: string; usedIn: {name: string; price: number}[]}[] = [];
+        
+        toppingsInCsv.forEach(toppingName => {
+          if (!existingToppingNames.has(toppingName.toLowerCase())) {
+            const usedIn = parsed
+              .filter(row => row.topping_collegato?.trim().toLowerCase() === toppingName.toLowerCase())
+              .map(row => ({ name: row.nome_portata, price: parseFloat(row.prezzo) || 0 }));
+            missing.push({ name: toppingName, usedIn });
+          }
+        });
+        
+        if (missing.length > 0) {
+          setMissingToppings(missing);
+          setCurrentMissingToppingIdx(0);
+          setCsvImportMode('missing-toppings');
+        } else {
+          setCsvImportMode('preview');
+        }
+      } catch (error) {
+        alert(`Errore nel parsing del CSV: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCreateMissingTopping = async () => {
+    if (!onAddSubRecipe) return;
+    if (!newToppingForm.name || !newToppingForm.category) {
+      alert('Compila nome e categoria del topping');
+      return;
+    }
+    
+    const newId = await onAddSubRecipe({
+      ...newToppingForm,
+      id: Math.random().toString(36).substr(2, 9),
+      components: newToppingForm.components || [],
+      initialWeight: newToppingForm.initialWeight || 1,
+      yieldWeight: newToppingForm.yieldWeight || 1
+    } as SubRecipe);
+    
+    if (newId) {
+      // Move to next missing topping or proceed to preview
+      if (currentMissingToppingIdx < missingToppings.length - 1) {
+        setCurrentMissingToppingIdx(prev => prev + 1);
+        setNewToppingForm({ components: [], initialWeight: 1, yieldWeight: 1, category: '' });
+      } else {
+        setCsvImportMode('preview');
+        setNewToppingForm({ components: [], initialWeight: 1, yieldWeight: 1, category: '' });
+      }
+    }
+  };
+
+  const handleConfirmImport = () => {
+    const existingToppingNames = new Map(subRecipes.map(sr => [sr.name.toLowerCase(), sr.id]));
+    const existingCategories = new Set(categories);
+    
+    csvData.forEach(row => {
+      const toppingName = row.topping_collegato?.trim();
+      const toppingId = toppingName ? existingToppingNames.get(toppingName.toLowerCase()) : null;
+      
+      const category = row.categoria?.trim() || 'Generica';
+      const name = normalizeText(row.nome_portata?.trim() || '');
+      const price = parseFloat(row.prezzo) || 0;
+      
+      if (!name || price <= 0) return;
+      
+      const menuItem: MenuItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        name,
+        category,
+        sellingPrice: price,
+        components: toppingId ? [{ id: toppingId as string, type: 'subrecipe' as const, quantity: 1 }] : [],
+        isDelivery: row.disponibile?.toLowerCase().includes('delivery') || false
+      };
+      
+      onAdd(menuItem);
+    });
+    
+    alert(`✅ Import completato! ${csvData.length} portata${csvData.length > 1 ? 'e' : ''} importata${csvData.length > 1 ? 'e' : ''}.`);
+    setCsvImportMode(null);
+    setCsvData([]);
+    setMissingToppings([]);
+  };
+
+  const handleDownloadExampleCSV = () => {
+    const exampleData = [
+      ['categoria', 'nome_portata', 'descrizione', 'prezzo', 'topping_collegato', 'disponibile', 'allergeni'],
+      ['Pizze', 'Margherita', 'Pomodoro, mozzarella, basilico', '8.50', 'Pomodoro fresco', 'Sì', 'Latte'],
+      ['Pizze', 'Marinara', 'Pomodoro, aglio, origano', '7.00', '', 'Sì', ''],
+      ['Pizze', 'Carbonara', 'Pancetta, uova, pecorino', '12.00', 'Carbonara', 'Sì', 'Latte, Uova'],
+      ['Focacce', 'Focaccia classica', 'Olio, sale, rosmarino', '5.00', '', 'Sì', ''],
+      ['Focacce', 'Focaccia pomodoro', 'Pomodoro, origano', '6.50', 'Pomodoro fresco', 'Sì', ''],
+      ['Panini', 'Panino Carbonara', 'Pancetta, uova, pecorino', '8.00', 'Carbonara', 'Delivery', 'Latte, Uova'],
+    ];
+
+    const csvContent = exampleData.map(row => row.join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM per Excel
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'esempio_menu_import.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const renderChoice = () => (
@@ -419,8 +596,225 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
     </div>
   );
 
+  const renderCSVImportDialogs = () => (
+    <>
+      {/* Upload Dialog */}
+      {csvImportMode === 'upload' && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6">
+            <div className="text-center">
+              <Upload className="mx-auto text-blue-500 mb-4" size={48} />
+              <h3 className="text-2xl font-black text-black mb-2">Importa CSV Menu</h3>
+              <p className="text-sm text-gray-500 font-semibold">
+                Carica un file CSV con la struttura: categoria, nome_portata, descrizione, prezzo, topping_collegato, disponibile, allergeni
+              </p>
+            </div>
+            <div className="space-y-4">
+              <button
+                onClick={handleDownloadExampleCSV}
+                className="w-full bg-blue-50 border border-blue-200 text-blue-600 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors"
+              >
+                <FileText size={18} />
+                Scarica CSV di Esempio
+              </button>
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVUpload}
+                  className="hidden"
+                />
+                <div className="w-full bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center cursor-pointer hover:border-blue-500 transition-colors">
+                  <FileText className="mx-auto mb-3 text-gray-400" size={32} />
+                  <p className="text-sm font-bold text-gray-600">Clicca per selezionare file CSV</p>
+                </div>
+              </label>
+            </div>
+            <button
+              onClick={() => setCsvImportMode(null)}
+              className="w-full py-4 bg-gray-100 text-gray-600 rounded-2xl font-black"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Missing Toppings Dialog */}
+      {csvImportMode === 'missing-toppings' && missingToppings.length > 0 && currentMissingToppingIdx < missingToppings.length && (
+        <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="text-center">
+              <AlertTriangle className="mx-auto text-yellow-500 mb-4" size={48} />
+              <h3 className="text-2xl font-black text-black mb-2">Topping Mancanti - Creazione Richiesta</h3>
+              <p className="text-sm text-gray-500 font-semibold">
+                Le seguenti portate richiedono topping non ancora creati:
+              </p>
+            </div>
+
+            {(() => {
+              const currentTopping = missingToppings[currentMissingToppingIdx];
+              return (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <FileText className="text-blue-600" size={24} />
+                      <h4 className="text-lg font-black text-black">TOPPING: "{currentTopping.name}"</h4>
+                    </div>
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-2">Usato in portate:</p>
+                    <div className="space-y-2">
+                      {currentTopping.usedIn.map((item, idx) => (
+                        <div key={idx} className="bg-white rounded-xl p-3 flex items-center justify-between">
+                          <span className="font-bold text-sm text-black">{item.name}</span>
+                          <span className="font-black text-sm text-green-600">€{item.price.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t border-gray-100">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Topping</label>
+                      <input
+                        type="text"
+                        className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+                        value={newToppingForm.name || currentTopping.name}
+                        onChange={e => setNewToppingForm({...newToppingForm, name: normalizeText(e.target.value)})}
+                        placeholder="Nome Topping"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Categoria</label>
+                      <input
+                        type="text"
+                        className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+                        value={newToppingForm.category || ''}
+                        onChange={e => setNewToppingForm({...newToppingForm, category: e.target.value})}
+                        placeholder="Categoria (es: Condimenti)"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                    <p className="text-xs font-semibold text-blue-800">
+                      Per importare queste portate, crea prima i topping mancanti. Puoi crearli ora uno alla volta, oppure annullare e importare prima i topping usando la sezione 'Topping'.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleCreateMissingTopping}
+                      className="flex-1 bg-black text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+                    >
+                      Crea Topping
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCsvImportMode(null);
+                        if (onNavigateToLab) onNavigateToLab();
+                      }}
+                      className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+                    >
+                      Annulla e Vai a Topping
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCsvImportMode(null);
+                        setCsvData([]);
+                        setMissingToppings([]);
+                      }}
+                      className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black"
+                    >
+                      Annulla Import
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Preview Dialog */}
+      {csvImportMode === 'preview' && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-3xl rounded-[2.5rem] p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="text-center">
+              <Check className="mx-auto text-green-500 mb-4" size={48} />
+              <h3 className="text-2xl font-black text-black mb-2">Anteprima Import</h3>
+              <p className="text-sm text-gray-500 font-semibold">
+                {csvData.length} portata{csvData.length > 1 ? 'e' : ''} pronte per l'import
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={autoCreateCategories}
+                  onChange={e => setAutoCreateCategories(e.target.checked)}
+                  className="w-5 h-5 rounded"
+                />
+                <span className="text-sm font-bold text-gray-700">Crea nuove categorie automaticamente</span>
+              </label>
+
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {(() => {
+                  const grouped = csvData.reduce((acc, row) => {
+                    const cat = row.categoria?.trim() || 'Generica';
+                    if (!acc[cat]) acc[cat] = [];
+                    acc[cat].push(row);
+                    return acc;
+                  }, {} as Record<string, CSVRow[]>);
+
+                  return Object.entries(grouped).map(([category, items]: [string, CSVRow[]]) => (
+                    <div key={category} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <h4 className="font-black text-sm text-black mb-3 uppercase">{category}</h4>
+                      <div className="space-y-2">
+                        {items.map((item, idx) => (
+                          <div key={idx} className="bg-white rounded-xl p-3 flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-sm text-black">{item.nome_portata}</p>
+                              {item.topping_collegato && (
+                                <p className="text-xs text-gray-500 font-semibold">Topping: {item.topping_collegato}</p>
+                              )}
+                            </div>
+                            <span className="font-black text-sm text-green-600">€{parseFloat(item.prezzo || '0').toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => {
+                  setCsvImportMode(null);
+                  setCsvData([]);
+                }}
+                className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                className="flex-1 bg-black text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+              >
+                Conferma e Importa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
+      {csvImportMode && renderCSVImportDialogs()}
       {creationMode === 'choice' && renderChoice()}
       {creationMode === 'ai' && (
         <div className="fixed inset-0 z-[160] bg-white flex flex-col p-8 animate-in slide-in-from-right">
@@ -877,7 +1271,12 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
         <div className="relative">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input type="text" placeholder="Cerca pizza..." className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          <button onClick={() => { setCreationMode('manual'); setEditingId(null); setForm({ components: [], sellingPrice: 0, category: '' }); setIsAddingNewCategoryForm(false); }} className="absolute right-5 top-1/2 -translate-y-1/2 bg-black text-white p-2 rounded-xl shadow-sm"><Plus size={16} /></button>
+          <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+            <button onClick={() => setCsvImportMode('upload')} className="bg-blue-600 text-white p-2 rounded-xl shadow-sm active:scale-90 transition-transform" title="Importa CSV">
+              <Upload size={16} />
+            </button>
+            <button onClick={() => { setCreationMode('manual'); setEditingId(null); setForm({ components: [], sellingPrice: 0, category: '' }); setIsAddingNewCategoryForm(false); }} className="bg-black text-white p-2 rounded-xl shadow-sm"><Plus size={16} /></button>
+          </div>
         </div>
       </div>
 
