@@ -98,7 +98,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     mixingTemp: 'T.A.',
     mixingProcedure: 'Impastare fino a incordatura. Aggiungere sale a metà impasto.',
     // Puntata
-    puntataTime: '1-2',
+    puntataTime: '30-60',
     puntataTemp: 'T.A.',
     puntataProcedure: 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.',
     // Appretto vs Pre-shape
@@ -965,18 +965,18 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     );
 
     // Componente per input tempo/temperatura/procedura
-    const PhaseInputs = ({ prefix, time, temp, procedure, onTimeChange, onTempChange, onProcedureChange }: any) => (
+    const PhaseInputs = ({ prefix, time, temp, procedure, onTimeChange, onTempChange, onProcedureChange, timeUnit = 'ore', timePlaceholder = 'es: 1-2' }: any) => (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
-              <Clock size={12} /> Tempo (ore)
+              <Clock size={12} /> Tempo ({timeUnit})
             </label>
             <input
               type="text"
               value={time}
               onChange={(e) => onTimeChange(e.target.value)}
-              placeholder="es: 1-2"
+              placeholder={timePlaceholder}
               className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
             />
           </div>
@@ -1253,6 +1253,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
               onTimeChange={(v: string) => setManualManagement({ ...manualManagement, puntataTime: v })}
               onTempChange={(v: string) => setManualManagement({ ...manualManagement, puntataTemp: v })}
               onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, puntataProcedure: v })}
+              timeUnit="min"
+              timePlaceholder="es: 30-60"
             />
           </div>
 

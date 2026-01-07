@@ -153,7 +153,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
 
   // Puntata (prima lievitazione in massa)
   const [usePuntata, setUsePuntata] = useState<boolean>(initialData?.usePuntata ?? true);
-  const [puntataTime, setPuntataTime] = useState<string>(initialData?.puntataTime ?? '1-2');
+  const [puntataTime, setPuntataTime] = useState<string>(initialData?.puntataTime ?? '30-60');
   const [puntataTemp, setPuntataTemp] = useState<string>(initialData?.puntataTemp ?? 'T.A.');
   const [puntataProcedure, setPuntataProcedure] = useState<string>(initialData?.puntataProcedure ?? 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.');
 
@@ -1121,12 +1121,12 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
             </p>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (ore)</label>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (min)</label>
                 <input
                   type="text"
                   value={puntataTime}
                   onChange={(e) => setPuntataTime(e.target.value)}
-                  placeholder="es: 1-2"
+                  placeholder="es: 30-60"
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
                 />
               </div>
