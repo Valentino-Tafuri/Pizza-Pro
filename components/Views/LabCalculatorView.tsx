@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Printer, Calculator, Search, Plus, X, Edit2, Trash2, AlertTriangle, Check, Settings } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Printer, Calculator, Search, Plus, X, Edit2, Trash2, AlertTriangle, Check, Settings, ToggleRight, ToggleLeft, Clock, Thermometer, FileText, ChefHat, Flame } from 'lucide-react';
 import { Ingredient, SubRecipe, ComponentUsage, Supplier, Unit } from '../../types';
 import { normalizeText } from '../../utils/textUtils';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
@@ -37,9 +37,17 @@ interface RecipeResult {
 const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subRecipes, suppliers, preferments, onAdd, onUpdate, onDelete, onAddIngredient, onAddSupplier, userData }) => {
   const totalFlour = 1000; // Base fissa
   
+  // Usa un ref per mantenere lo stato del modal aperto anche durante i re-render
+  const showCalculatorRef = useRef(false);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCalculator, setShowCalculator] = useState(false);
+  
+  // Sincronizza il ref con lo state
+  useEffect(() => {
+    showCalculatorRef.current = showCalculator;
+  }, [showCalculator]);
   const [showManualForm, setShowManualForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [recipeName, setRecipeName] = useState('');
@@ -67,13 +75,52 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   const [isAddingNewCategoryFlour, setIsAddingNewCategoryFlour] = useState(false);
   
   // Form manuale
-  const [form, setForm] = useState<Partial<SubRecipe>>({ 
-    components: [], 
-    initialWeight: 0, 
+  const [form, setForm] = useState<Partial<SubRecipe>>({
+    components: [],
+    initialWeight: 0,
     yieldWeight: 0,
     category: '',
     portionWeight: 250
   });
+
+  // State per gestione fasi (form manuale)
+  const [useManualPreferment, setUseManualPreferment] = useState(false);
+  const [manualPrefermentComponents, setManualPrefermentComponents] = useState<ComponentUsage[]>([]);
+  const [showAddPrefermentIngredient, setShowAddPrefermentIngredient] = useState(false);
+
+  const [manualManagement, setManualManagement] = useState({
+    // Prefermento
+    prefermentTime: '12-16',
+    prefermentTemp: '18-20°C',
+    prefermentProcedure: 'Mescolare farina, acqua e lievito. Lasciar fermentare coperto.',
+    // Impasto/Mixing
+    mixingTime: '15-20',
+    mixingTemp: 'T.A.',
+    mixingProcedure: 'Impastare fino a incordatura. Aggiungere sale a metà impasto.',
+    // Puntata
+    puntataTime: '1-2',
+    puntataTemp: 'T.A.',
+    puntataProcedure: 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.',
+    // Appretto vs Pre-shape
+    usePreShape: false,
+    // Appretto
+    apprettoTime: '4-8',
+    apprettoTemp: 'T.A. / 4°C',
+    apprettoProcedure: 'Formare i panetti e lasciar lievitare. Conservare in frigorifero se necessario.',
+    // Pre-shape
+    preShapeTime: '15-30',
+    preShapeTemp: 'T.A.',
+    preShapeProcedure: 'Pre-formare i panetti in forma tondeggiante. Lasciar riposare coperti.',
+    // Shape
+    shapeTime: '10-20',
+    shapeTemp: 'T.A.',
+    shapeProcedure: 'Formare i panetti nella forma finale. Sistemare su teglia o cestino.',
+    // Cottura
+    cookingTime: '60-90',
+    cookingTemp: '450-480',
+    cookingProcedure: 'Cuocere in forno preriscaldato fino a doratura uniforme.'
+  });
+
   const [showAddIngredientModal, setShowAddIngredientModal] = useState(false);
   const [addIngredientSearch, setAddIngredientSearch] = useState('');
   const [showNewIngredientForm, setShowNewIngredientForm] = useState(false);
@@ -154,7 +201,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   const [showAddIngredientModalCalc, setShowAddIngredientModalCalc] = useState(false);
 
   // Categorie predefinite
-  const categories = ['Pizza', 'Pane', 'Dolci'];
+  const categories = ['Pizza', 'Pane', 'Dolci', 'Panificazione', 'Focaccia', 'Taralli', 'Biscotti', 'Grissini', 'Crackers', 'Altro'];
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
 
   // Calcola la percentuale totale di farina usata
@@ -904,36 +951,93 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
 
     const costPerKg = (form.yieldWeight || 0) > 0 ? totalCost / (form.yieldWeight || 1) : 0;
 
+    // Componente riutilizzabile per le sezioni fase
+    const PhaseSection = ({ title, icon: Icon, color, children }: { title: string; icon: any; color: string; children: React.ReactNode }) => (
+      <div className={`bg-${color}-50 rounded-2xl p-5 border border-${color}-100`}>
+        <div className="flex items-center gap-2 mb-4">
+          <div className={`w-8 h-8 bg-${color}-100 rounded-xl flex items-center justify-center`}>
+            <Icon size={16} className={`text-${color}-600`} />
+          </div>
+          <h4 className="text-sm font-black text-gray-800">{title}</h4>
+        </div>
+        {children}
+      </div>
+    );
+
+    // Componente per input tempo/temperatura/procedura
+    const PhaseInputs = ({ prefix, time, temp, procedure, onTimeChange, onTempChange, onProcedureChange }: any) => (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+              <Clock size={12} /> Tempo (ore)
+            </label>
+            <input
+              type="text"
+              value={time}
+              onChange={(e) => onTimeChange(e.target.value)}
+              placeholder="es: 1-2"
+              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+              <Thermometer size={12} /> Temperatura
+            </label>
+            <input
+              type="text"
+              value={temp}
+              onChange={(e) => onTempChange(e.target.value)}
+              placeholder="es: T.A."
+              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+            <FileText size={12} /> Procedura
+          </label>
+          <textarea
+            value={procedure}
+            onChange={(e) => onProcedureChange(e.target.value)}
+            rows={2}
+            className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium resize-none"
+          />
+        </div>
+      </div>
+    );
+
     return (
       <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
         <div className="px-6 pt-12 pb-4 flex justify-between items-center border-b border-gray-50">
           <h3 className="font-black text-2xl tracking-tight">{editingId ? 'Modifica Impasto' : 'Nuovo Impasto'}</h3>
           <button onClick={resetForm} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={20}/></button>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-40 scrollbar-hide">
-          <input 
-            type="text" 
-            className="w-full bg-gray-50 border-none rounded-2xl p-5 text-2xl font-black" 
-            value={form.name || ''} 
-            onChange={e => setForm({...form, name: e.target.value})} 
-            onBlur={e => setForm({...form, name: normalizeText(e.target.value)})} 
-            placeholder="Nome Impasto" 
+          {/* Nome e Categoria */}
+          <input
+            type="text"
+            className="w-full bg-gray-50 border-none rounded-2xl p-5 text-2xl font-black"
+            value={form.name || ''}
+            onChange={e => setForm({...form, name: e.target.value})}
+            onBlur={e => setForm({...form, name: normalizeText(e.target.value)})}
+            placeholder="Nome Impasto"
           />
-          
+
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Categoria</label>
             <div className="flex flex-wrap gap-2">
               {categories.map(cat => (
-                <button 
-                  key={cat} 
+                <button
+                  key={cat}
                   onClick={() => { setForm({...form, category: cat}); setIsAddingNewCategoryForm(false); }}
                   className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${form.category === cat ? 'bg-black text-white' : 'bg-gray-100 text-gray-400'}`}
                 >
                   {cat}
                 </button>
               ))}
-              <button 
+              <button
                 onClick={() => setIsAddingNewCategoryForm(true)}
                 className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center space-x-1 ${isAddingNewCategoryForm ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-400'}`}
               >
@@ -941,92 +1045,323 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
               </button>
             </div>
             {isAddingNewCategoryForm && (
-              <input 
+              <input
                 autoFocus
-                placeholder="Nome nuova categoria..." 
-                className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-blue-100 border mt-2" 
-                value={form.category || ''} 
-                onChange={e => setForm({...form, category: e.target.value})} 
+                placeholder="Nome nuova categoria..."
+                className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-blue-100 border mt-2"
+                value={form.category || ''}
+                onChange={e => setForm({...form, category: e.target.value})}
               />
             )}
           </div>
 
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 mb-2 block">Peso Porzione (g)</label>
-            <input 
-              type="number" 
+            <input
+              type="number"
               step="1"
               min="1"
-              className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold" 
-              value={form.portionWeight || 250} 
-              onChange={e => setForm({...form, portionWeight: Math.max(1, parseInt(e.target.value) || 250)})} 
+              className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+              value={form.portionWeight || 250}
+              onChange={e => setForm({...form, portionWeight: Math.max(1, parseInt(e.target.value) || 250)})}
               placeholder="250"
             />
           </div>
 
-          <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Ingredienti (g)</h4>
-            {form.components?.map(c => {
-              const item = ingredients.find(i => i.id === c.id) || subRecipes.find(s => s.id === c.id);
-              let componentCost = 0;
-              let costPerKgItem = 0;
-              
-              if (c.type === 'ingredient') {
-                const ing = ingredients.find(i => i.id === c.id);
-                if (ing) {
-                  const multiplier = (ing.unit === 'kg' || ing.unit === 'l') ? 0.001 : 1;
-                  componentCost = ing.pricePerUnit * c.quantity * multiplier;
-                  costPerKgItem = ing.pricePerUnit;
-                }
-              } else if (c.type === 'subrecipe') {
-                const nestedSub = subRecipes.find(s => s.id === c.id);
-                if (nestedSub) {
-                  const nestedCostPerKg = calculateSubRecipeCostPerKg(nestedSub, ingredients, subRecipes);
-                  componentCost = nestedCostPerKg * (c.quantity / 1000);
-                  costPerKgItem = nestedCostPerKg;
-                }
-              }
-              
-              const incidence = totalCost > 0 ? (componentCost / totalCost) * 100 : 0;
-              
-              return (
-                <div key={c.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <span className="font-bold text-sm text-black block">{item?.name || 'Sync...'}</span>
-                      <span className="text-[10px] text-gray-400 font-bold">€{costPerKgItem.toFixed(2)}/kg</span>
-                    </div>
-                    <div className="flex items-center bg-gray-50 px-3 py-2 rounded-xl">
-                      <input 
-                        type="number" 
-                        step="0.1"
-                        className="w-16 bg-transparent text-center font-black text-xs" 
-                        value={c.quantity} 
-                        onChange={e => {
-                          const newQuantity = parseFloat(e.target.value) || 0;
-                          setForm({...form, components: form.components?.map(comp => comp.id === c.id ? {...comp, quantity: newQuantity} : comp)});
-                        }} 
-                      />
-                      <span className="text-[10px] text-gray-400 font-bold ml-1 uppercase">g</span>
-                      <button onClick={() => setForm({...form, components: form.components?.filter(comp => comp.id !== c.id)})} className="ml-2 text-red-200 hover:text-red-500 transition-colors"><X size={14}/></button>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-xs">
-                    <span className="text-gray-400 font-bold">€{componentCost.toFixed(2)}</span>
-                    <span className="text-blue-600 font-black">{incidence.toFixed(1)}%</span>
-                  </div>
+          {/* FASE 1: Prefermento (opzionale) */}
+          <div className={`rounded-2xl p-5 border ${useManualPreferment ? 'bg-amber-50 border-amber-100' : 'bg-gray-50 border-gray-100'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${useManualPreferment ? 'bg-amber-100' : 'bg-gray-200'}`}>
+                  <Clock size={16} className={useManualPreferment ? 'text-amber-600' : 'text-gray-400'} />
                 </div>
-              );
-            })}
-            
-            <button 
-              onClick={() => setShowAddIngredientModal(true)}
-              className="w-full py-4 border-2 border-dashed border-gray-100 rounded-2xl text-gray-300 font-bold text-xs flex items-center justify-center space-x-2 hover:border-gray-200 hover:text-gray-400 transition-colors"
-            >
-              <Plus size={14}/> <span>Aggiungi Ingrediente</span>
-            </button>
+                <h4 className={`text-sm font-black ${useManualPreferment ? 'text-gray-800' : 'text-gray-400'}`}>1. Prefermento</h4>
+              </div>
+              <button
+                onClick={() => setUseManualPreferment(!useManualPreferment)}
+                className="flex items-center gap-2"
+              >
+                {useManualPreferment ? (
+                  <ToggleRight className="text-amber-600" size={28} />
+                ) : (
+                  <ToggleLeft className="text-gray-400" size={28} />
+                )}
+              </button>
+            </div>
+
+            {useManualPreferment && (
+              <div className="space-y-4">
+                {/* Ingredienti Prefermento */}
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-amber-700 uppercase tracking-wider">Ingredienti Prefermento</label>
+                  {manualPrefermentComponents.map(c => {
+                    const item = ingredients.find(i => i.id === c.id);
+                    return (
+                      <div key={c.id} className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-sm text-gray-800">{item?.name || 'Ingrediente'}</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="w-20 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 text-center font-black text-sm"
+                              value={c.quantity}
+                              onChange={e => {
+                                const newQuantity = parseFloat(e.target.value) || 0;
+                                setManualPrefermentComponents(manualPrefermentComponents.map(comp =>
+                                  comp.id === c.id ? {...comp, quantity: newQuantity} : comp
+                                ));
+                              }}
+                            />
+                            <span className="text-xs text-gray-500 font-bold">g</span>
+                            <button
+                              onClick={() => setManualPrefermentComponents(manualPrefermentComponents.filter(comp => comp.id !== c.id))}
+                              className="text-red-300 hover:text-red-500 transition-colors"
+                            >
+                              <X size={16}/>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button
+                    onClick={() => setShowAddPrefermentIngredient(true)}
+                    className="w-full py-3 border-2 border-dashed border-amber-300 rounded-xl text-amber-600 font-bold text-xs flex items-center justify-center gap-2 hover:border-amber-400 hover:bg-amber-50 transition-colors"
+                  >
+                    <Plus size={14}/> Aggiungi Ingrediente Prefermento
+                  </button>
+                </div>
+
+                {/* Gestione Fase */}
+                <div className="pt-4 border-t border-amber-200">
+                  <label className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3 block">Gestione Fase</label>
+                  <PhaseInputs
+                    time={manualManagement.prefermentTime}
+                    temp={manualManagement.prefermentTemp}
+                    procedure={manualManagement.prefermentProcedure}
+                    onTimeChange={(v: string) => setManualManagement({ ...manualManagement, prefermentTime: v })}
+                    onTempChange={(v: string) => setManualManagement({ ...manualManagement, prefermentTemp: v })}
+                    onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, prefermentProcedure: v })}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* FASE 2: Ingredienti */}
+          <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                <ChefHat size={16} className="text-blue-600" />
+              </div>
+              <h4 className="text-sm font-black text-gray-800">2. Ingredienti (g)</h4>
+            </div>
+            <div className="space-y-3">
+              {form.components?.map(c => {
+                const item = ingredients.find(i => i.id === c.id) || subRecipes.find(s => s.id === c.id);
+                let componentCost = 0;
+                let costPerKgItem = 0;
+
+                if (c.type === 'ingredient') {
+                  const ing = ingredients.find(i => i.id === c.id);
+                  if (ing) {
+                    const multiplier = (ing.unit === 'kg' || ing.unit === 'l') ? 0.001 : 1;
+                    componentCost = ing.pricePerUnit * c.quantity * multiplier;
+                    costPerKgItem = ing.pricePerUnit;
+                  }
+                } else if (c.type === 'subrecipe') {
+                  const nestedSub = subRecipes.find(s => s.id === c.id);
+                  if (nestedSub) {
+                    const nestedCostPerKg = calculateSubRecipeCostPerKg(nestedSub, ingredients, subRecipes);
+                    componentCost = nestedCostPerKg * (c.quantity / 1000);
+                    costPerKgItem = nestedCostPerKg;
+                  }
+                }
+
+                const incidence = totalCost > 0 ? (componentCost / totalCost) * 100 : 0;
+
+                return (
+                  <div key={c.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <span className="font-bold text-sm text-black block">{item?.name || 'Sync...'}</span>
+                        <span className="text-[10px] text-gray-400 font-bold">€{costPerKgItem.toFixed(2)}/kg</span>
+                      </div>
+                      <div className="flex items-center bg-gray-50 px-3 py-2 rounded-xl">
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="w-16 bg-transparent text-center font-black text-xs"
+                          value={c.quantity}
+                          onChange={e => {
+                            const newQuantity = parseFloat(e.target.value) || 0;
+                            setForm({...form, components: form.components?.map(comp => comp.id === c.id ? {...comp, quantity: newQuantity} : comp)});
+                          }}
+                        />
+                        <span className="text-[10px] text-gray-400 font-bold ml-1 uppercase">g</span>
+                        <button onClick={() => setForm({...form, components: form.components?.filter(comp => comp.id !== c.id)})} className="ml-2 text-red-200 hover:text-red-500 transition-colors"><X size={14}/></button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs">
+                      <span className="text-gray-400 font-bold">€{componentCost.toFixed(2)}</span>
+                      <span className="text-blue-600 font-black">{incidence.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                onClick={() => setShowAddIngredientModal(true)}
+                className="w-full py-4 border-2 border-dashed border-blue-200 rounded-xl text-blue-400 font-bold text-xs flex items-center justify-center space-x-2 hover:border-blue-300 hover:text-blue-500 transition-colors bg-white"
+              >
+                <Plus size={14}/> <span>Aggiungi Ingrediente</span>
+              </button>
+            </div>
+          </div>
+
+          {/* FASE 3: Impasto/Mixing */}
+          <div className="bg-green-50 rounded-2xl p-5 border border-green-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
+                <ChefHat size={16} className="text-green-600" />
+              </div>
+              <h4 className="text-sm font-black text-gray-800">3. Impasto (Mixing)</h4>
+            </div>
+            <PhaseInputs
+              time={manualManagement.mixingTime}
+              temp={manualManagement.mixingTemp}
+              procedure={manualManagement.mixingProcedure}
+              onTimeChange={(v: string) => setManualManagement({ ...manualManagement, mixingTime: v })}
+              onTempChange={(v: string) => setManualManagement({ ...manualManagement, mixingTemp: v })}
+              onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, mixingProcedure: v })}
+            />
+          </div>
+
+          {/* FASE 4: Puntata */}
+          <div className="bg-purple-50 rounded-2xl p-5 border border-purple-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
+                <Clock size={16} className="text-purple-600" />
+              </div>
+              <h4 className="text-sm font-black text-gray-800">4. Puntata (Prima Lievitazione)</h4>
+            </div>
+            <PhaseInputs
+              time={manualManagement.puntataTime}
+              temp={manualManagement.puntataTemp}
+              procedure={manualManagement.puntataProcedure}
+              onTimeChange={(v: string) => setManualManagement({ ...manualManagement, puntataTime: v })}
+              onTempChange={(v: string) => setManualManagement({ ...manualManagement, puntataTemp: v })}
+              onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, puntataProcedure: v })}
+            />
+          </div>
+
+          {/* FASE 5: Appretto / Pre-shape */}
+          <div className="bg-indigo-50 rounded-2xl p-5 border border-indigo-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <Clock size={16} className="text-indigo-600" />
+                </div>
+                <h4 className="text-sm font-black text-gray-800">5. {manualManagement.usePreShape ? 'Pre-shape' : 'Appretto'}</h4>
+              </div>
+              <button
+                onClick={() => setManualManagement({ ...manualManagement, usePreShape: !manualManagement.usePreShape })}
+                className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg border border-indigo-200 text-xs font-bold text-indigo-600"
+              >
+                {manualManagement.usePreShape ? 'Pre-shape' : 'Appretto'}
+                <ToggleRight size={16} />
+              </button>
+            </div>
+            {manualManagement.usePreShape ? (
+              <PhaseInputs
+                time={manualManagement.preShapeTime}
+                temp={manualManagement.preShapeTemp}
+                procedure={manualManagement.preShapeProcedure}
+                onTimeChange={(v: string) => setManualManagement({ ...manualManagement, preShapeTime: v })}
+                onTempChange={(v: string) => setManualManagement({ ...manualManagement, preShapeTemp: v })}
+                onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, preShapeProcedure: v })}
+              />
+            ) : (
+              <PhaseInputs
+                time={manualManagement.apprettoTime}
+                temp={manualManagement.apprettoTemp}
+                procedure={manualManagement.apprettoProcedure}
+                onTimeChange={(v: string) => setManualManagement({ ...manualManagement, apprettoTime: v })}
+                onTempChange={(v: string) => setManualManagement({ ...manualManagement, apprettoTemp: v })}
+                onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, apprettoProcedure: v })}
+              />
+            )}
+          </div>
+
+          {/* FASE 6: Shape */}
+          <div className="bg-pink-50 rounded-2xl p-5 border border-pink-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-pink-100 rounded-xl flex items-center justify-center">
+                <ChefHat size={16} className="text-pink-600" />
+              </div>
+              <h4 className="text-sm font-black text-gray-800">6. Shape (Formatura)</h4>
+            </div>
+            <PhaseInputs
+              time={manualManagement.shapeTime}
+              temp={manualManagement.shapeTemp}
+              procedure={manualManagement.shapeProcedure}
+              onTimeChange={(v: string) => setManualManagement({ ...manualManagement, shapeTime: v })}
+              onTempChange={(v: string) => setManualManagement({ ...manualManagement, shapeTemp: v })}
+              onProcedureChange={(v: string) => setManualManagement({ ...manualManagement, shapeProcedure: v })}
+            />
+          </div>
+
+          {/* FASE 7: Cottura */}
+          <div className="bg-red-50 rounded-2xl p-5 border border-red-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
+                <Flame size={16} className="text-red-600" />
+              </div>
+              <h4 className="text-sm font-black text-gray-800">7. Cottura</h4>
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+                    <Clock size={12} /> Tempo (secondi)
+                  </label>
+                  <input
+                    type="text"
+                    value={manualManagement.cookingTime}
+                    onChange={(e) => setManualManagement({ ...manualManagement, cookingTime: e.target.value })}
+                    placeholder="es: 60-90"
+                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+                    <Thermometer size={12} /> Temperatura (°C)
+                  </label>
+                  <input
+                    type="text"
+                    value={manualManagement.cookingTemp}
+                    onChange={(e) => setManualManagement({ ...manualManagement, cookingTemp: e.target.value })}
+                    placeholder="es: 450-480"
+                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+                  <FileText size={12} /> Procedura
+                </label>
+                <textarea
+                  value={manualManagement.cookingProcedure}
+                  onChange={(e) => setManualManagement({ ...manualManagement, cookingProcedure: e.target.value })}
+                  rows={2}
+                  className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium resize-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Riepilogo Costi */}
           {form.components && form.components.length > 0 && (
             <div className="bg-gray-50 p-6 rounded-2xl space-y-2">
               <div className="flex justify-between items-center">
@@ -1050,13 +1385,147 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
             </div>
           )}
 
-          <button 
+          <button
             onClick={handleSaveForm}
             className="w-full bg-black text-white py-5 rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all"
           >
             {editingId ? 'Salva Modifiche' : 'Crea Impasto'}
           </button>
         </div>
+
+        {/* Modal Aggiungi Ingrediente - dentro il form per z-index corretto */}
+        {showAddIngredientModal && (
+          <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+            <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6 max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="flex justify-between items-center">
+                <h3 className="text-2xl font-black tracking-tight">Aggiungi Ingrediente</h3>
+                <button onClick={() => { setShowAddIngredientModal(false); setAddIngredientSearch(''); }} className="bg-gray-100 p-2 rounded-full text-gray-400">
+                  <X size={20}/>
+                </button>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Cerca ingrediente..."
+                  className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold"
+                  value={addIngredientSearch}
+                  onChange={(e) => setAddIngredientSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+                {ingredients
+                  .filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase()))
+                  .map(ing => {
+                    const alreadyAdded = form.components?.some(c => c.id === ing.id && c.type === 'ingredient');
+                    return (
+                      <button
+                        key={ing.id}
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            setForm({...form, components: [...(form.components || []), { id: ing.id, type: 'ingredient', quantity: 100 }]});
+                            setShowAddIngredientModal(false);
+                            setAddIngredientSearch('');
+                          }
+                        }}
+                        disabled={alreadyAdded}
+                        className={`w-full p-4 rounded-2xl text-left transition-all ${
+                          alreadyAdded
+                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                            : 'bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-black text-sm text-black">{ing.name}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{ing.category}</p>
+                          </div>
+                          {alreadyAdded && (
+                            <Check className="text-gray-300" size={20}/>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                {ingredients.filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase())).length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400 font-bold text-sm">Nessun ingrediente trovato</p>
+                    <p className="text-gray-300 text-xs mt-1">Aggiungi ingredienti dall'Economato</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Aggiungi Ingrediente Prefermento */}
+        {showAddPrefermentIngredient && (
+          <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+            <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6 max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="flex justify-between items-center">
+                <h3 className="text-2xl font-black tracking-tight text-amber-700">Ingredienti Prefermento</h3>
+                <button onClick={() => { setShowAddPrefermentIngredient(false); setAddIngredientSearch(''); }} className="bg-gray-100 p-2 rounded-full text-gray-400">
+                  <X size={20}/>
+                </button>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Cerca ingrediente..."
+                  className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold"
+                  value={addIngredientSearch}
+                  onChange={(e) => setAddIngredientSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+                {ingredients
+                  .filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase()))
+                  .map(ing => {
+                    const alreadyAdded = manualPrefermentComponents.some(c => c.id === ing.id);
+                    return (
+                      <button
+                        key={ing.id}
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            setManualPrefermentComponents([...manualPrefermentComponents, { id: ing.id, type: 'ingredient', quantity: 100 }]);
+                            setShowAddPrefermentIngredient(false);
+                            setAddIngredientSearch('');
+                          }
+                        }}
+                        disabled={alreadyAdded}
+                        className={`w-full p-4 rounded-2xl text-left transition-all ${
+                          alreadyAdded
+                            ? 'bg-amber-50 text-amber-300 cursor-not-allowed border border-amber-200'
+                            : 'bg-white border border-gray-100 hover:border-amber-300 hover:shadow-sm active:scale-95'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className={`font-black text-sm ${alreadyAdded ? 'text-amber-400' : 'text-black'}`}>{ing.name}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{ing.category}</p>
+                          </div>
+                          {alreadyAdded && (
+                            <Check className="text-amber-400" size={20}/>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                {ingredients.filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase())).length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400 font-bold text-sm">Nessun ingrediente trovato</p>
+                    <p className="text-gray-300 text-xs mt-1">Aggiungi ingredienti dall'Economato</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2005,8 +2474,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
           </div>
         ) : (
           filteredSubRecipes.map(recipe => (
-            <div 
-              key={recipe.id} 
+            <div
+              key={recipe.id}
               className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all active:scale-[0.98]"
               onClick={() => handleEdit(recipe)}
             >
@@ -2018,15 +2487,15 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   {/* Pulsante Stampa PDF - solo per ricette create con calcolatore avanzato */}
                   {recipe.advancedCalculatorData && (
-                    <button 
+                    <button
                       onClick={async (e) => {
                         e.stopPropagation();
                         try {
                           const { generateRecipePDF } = await import('../../utils/pdfGenerator');
-                          const userName = userData?.firstName && userData?.lastName 
+                          const userName = userData?.firstName && userData?.lastName
                             ? `${userData.firstName} ${userData.lastName}`
                             : undefined;
-                          
+
                           generateRecipePDF({
                             name: recipe.name,
                             category: recipe.category,
@@ -2061,34 +2530,96 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   )}
                 </div>
               </div>
+              {/* Switch Etichetta FIFO - solo per impasti (ricette con advancedCalculatorData) */}
+              {recipe.advancedCalculatorData && onUpdate && (
+                <div className="mt-4 pt-4 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ETICHETTA FIFO</span>
+                      <span className="text-xs font-black text-black">Crea Etichetta FIFO</span>
+                    </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const newFifoLabel = !recipe.fifoLabel;
+                        const updated = { ...recipe, fifoLabel: newFifoLabel };
+                        try {
+                          await onUpdate(updated);
+                        } catch (error) {
+                          console.error('[LabCalculatorView] Errore aggiornamento:', error);
+                          alert(`❌ Errore: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+                        }
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      {recipe.fifoLabel ? (
+                        <ToggleRight className="text-green-600" size={24} />
+                      ) : (
+                        <ToggleLeft size={24} className="text-gray-400" />
+                      )}
+                      <span className="text-[10px] font-bold text-gray-400">{recipe.fifoLabel ? 'ON' : 'OFF'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
 
-      {/* Calcolatore Popup */}
+      {/* Calcolatore Popup - Bottom Sheet Style */}
       {showCalculator && (
-        <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
-          <div className="px-6 pt-12 pb-4 flex justify-between items-center border-b border-gray-50">
-            <h3 className="font-black text-2xl tracking-tight">
-              {editingId ? 'Modifica Impasto' : 'Calcolatore Avanzato Impasti'}
-            </h3>
-            <button 
-              onClick={() => {
-                setShowCalculator(false);
-                setEditingId(null);
-              }} 
-              className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors"
-            >
-              <X size={20}/>
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-6">
-            <AdvancedDoughCalculator
-              ingredients={ingredients}
-              preferments={preferments}
-              userName={userData?.firstName && userData?.lastName ? `${userData.firstName} ${userData.lastName}` : undefined}
-              onSave={async (recipeData) => {
+        <div 
+          className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300"
+          onClick={(e) => {
+            // Chiudi solo se si clicca sul backdrop, non sul contenuto
+            if (e.target === e.currentTarget) {
+              setShowCalculator(false);
+              setEditingId(null);
+            }
+          }}
+        >
+          <div 
+            className="w-full max-w-xl bg-white rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-y-auto max-h-[95vh] pb-12 scrollbar-hide relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8" />
+            
+            <header className="flex justify-between items-center mb-8">
+              <h3 className="text-3xl font-black tracking-tighter">
+                {editingId ? 'Modifica Impasto' : 'Calcolatore Avanzato Impasti'}
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowCalculator(false);
+                  setEditingId(null);
+                }} 
+                className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors"
+              >
+                <X size={24}/>
+              </button>
+            </header>
+            
+            <div className="space-y-6">
+              <AdvancedDoughCalculator
+                key={`calc-${showCalculator}-${editingId}`} // Key per forzare re-render quando si apre/chiude o cambia ricetta
+                ingredients={ingredients}
+                preferments={preferments}
+                userName={userData?.firstName && userData?.lastName ? `${userData.firstName} ${userData.lastName}` : undefined}
+                initialData={editingId ? subRecipes.find(r => r.id === editingId)?.advancedCalculatorData?.formData : undefined}
+                onAddIngredient={async (ing) => {
+                  // Mantieni il modal aperto durante l'aggiunta dell'ingrediente
+                  const wasOpen = showCalculatorRef.current;
+                  const result = await onAddIngredient?.(ing);
+                  // Se il modal era aperto, riaprirlo
+                  if (wasOpen && !showCalculator) {
+                    setShowCalculator(true);
+                  }
+                  return result;
+                }}
+                onAddSupplier={onAddSupplier}
+                suppliers={suppliers}
+                onSave={async (recipeData) => {
                 // Converti risultato calcolatore in SubRecipe
                 const calcResult = recipeData.calculation;
                 if (!calcResult) return;
@@ -2227,7 +2758,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                     hydration: recipeData.hydration,
                     calculation: cleanedCalcResult,
                     management: recipeData.management,
-                    preferment: recipeData.preferment || null
+                    preferment: recipeData.preferment || null,
+                    formData: recipeData.formData // Dati completi del form per ricaricamento in modifica
                   })
                 };
                 
@@ -2251,6 +2783,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                 }
               }}
             />
+            </div>
           </div>
         </div>
       )}

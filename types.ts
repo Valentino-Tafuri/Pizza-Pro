@@ -30,6 +30,27 @@ export interface FixedCost {
   category: string;
 }
 
+// Product Mix Types per Pricing Calculator
+export interface ProductCategory {
+  id: string;
+  nome: string;
+  emoji: string;
+  incidenzaFatturato: number;  // % del fatturato totale (somma deve essere 100)
+  prezzoMedio: number;         // Prezzo medio di vendita
+  foodCostTarget: number;      // % food cost target per categoria
+  costiVariabili: {
+    packaging: boolean;        // Applica costo packaging
+    sfrido: boolean;           // Applica costo sfrido
+    delivery: boolean;         // Applica costo delivery (se abilitato)
+  };
+  volumeUnitario: number;      // Unità vendute per coperto (es: 1.0 pizza, 1.5 beverage)
+}
+
+export interface ProductMix {
+  volumeMensile: number;       // Numero coperti al mese
+  categorie: ProductCategory[];
+}
+
 export interface BepConfig {
   fixedCosts: FixedCost[];
   foodCostIncidence: number;
@@ -38,6 +59,7 @@ export interface BepConfig {
   averageTicket: number;
   deliveryEnabled?: boolean;
   deliveryIncidence?: number;
+  productMix?: ProductMix;     // Configurazione product mix per pricing
 }
 
 export interface BusinessConfig {

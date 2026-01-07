@@ -234,18 +234,18 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerateLabels = async (labels: FifoLabel[]) => {
+  const handleGenerateLabels = async (labels: FifoLabel[], stockQuantity: number = 1) => {
     if (!user) {
       console.error('[App] handleGenerateLabels: user non disponibile');
       throw new Error('Utente non autenticato');
     }
-    
+
     if (!labels || labels.length === 0) {
       console.error('[App] handleGenerateLabels: nessuna etichetta da salvare');
       throw new Error('Nessuna etichetta da salvare');
     }
-    
-    console.log('[App] handleGenerateLabels chiamato con', labels.length, 'etichette');
+
+    console.log('[App] handleGenerateLabels chiamato con', labels.length, 'etichette, stockQuantity:', stockQuantity);
     
     const userName = `${userData.firstName} ${userData.lastName}`;
     
@@ -266,28 +266,35 @@ const App: React.FC = () => {
         console.log(`[App] Etichetta ${i + 1} salvata con successo`);
       }
       
-      // Aggiorna stock preparazione
+      // Aggiorna stock preparazione (solo per NON-impasti)
       const prepId = labels[0].preparationId;
       const prep = preparations.find(p => p.id === prepId);
-      
+
       if (prep) {
-        console.log('[App] Aggiornamento stock per preparazione:', prep.name, 'da', prep.currentStock, 'a', prep.currentStock + labels.length);
-        const newStock = prep.currentStock + labels.length;
-        await handleUpdateStock(prepId, newStock, `Carico automatico da ${labels.length} etichetta${labels.length > 1 ? 'e' : ''} FIFO generate`);
-        
-        // Crea movimento carico
-        const movementId = `mov_${Date.now()}`;
-        await handleSave('stockMovements', {
-          id: movementId,
-          type: 'load' as const,
-          preparationId: prepId,
-          preparationName: prep.name,
-          quantity: labels.length,
-          userId: user.uid,
-          userName: userName,
-          timestamp: Timestamp.now()
-        });
-        console.log('[App] Movimento carico creato:', movementId);
+        // Se è un impasto (ha advancedCalculatorData), NON aggiorniamo il magazzino
+        const isImpasto = !!prep.advancedCalculatorData;
+
+        if (isImpasto) {
+          console.log('[App] Preparazione è un impasto - skip aggiornamento magazzino:', prep.name);
+        } else {
+          console.log('[App] Aggiornamento stock per preparazione:', prep.name, 'da', prep.currentStock, 'a', prep.currentStock + stockQuantity);
+          const newStock = prep.currentStock + stockQuantity;
+          await handleUpdateStock(prepId, newStock, `Carico automatico: ${stockQuantity} ${stockQuantity > 1 ? 'unità' : 'unità'} da etichetta FIFO`);
+
+          // Crea movimento carico
+          const movementId = `mov_${Date.now()}`;
+          await handleSave('stockMovements', {
+            id: movementId,
+            type: 'load' as const,
+            preparationId: prepId,
+            preparationName: prep.name,
+            quantity: stockQuantity,
+            userId: user.uid,
+            userName: userName,
+            timestamp: Timestamp.now()
+          });
+          console.log('[App] Movimento carico creato:', movementId, '- Quantità:', stockQuantity);
+        }
       } else {
         console.warn('[App] Preparazione non trovata per ID:', prepId);
       }

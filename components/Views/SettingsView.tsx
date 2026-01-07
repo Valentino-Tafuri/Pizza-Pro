@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Settings, ChevronRight, Beaker, BarChart3, Users, Truck, Store } from 'lucide-react';
+import { Settings, ChevronRight, Beaker, BarChart3, Users, Truck, Store, Calculator } from 'lucide-react';
 import AssetsView from './AssetsView';
 import StaffView from './StaffView';
 import SuppliersView from './SuppliersView';
 import PrefermentiView, { Preferment } from './PrefermentiView';
 import BusinessSettingsView from './BusinessSettingsView';
+import PricingView from './PricingView';
 import { UserData, Employee, Supplier, BusinessConfig, PlatformConnection } from '../../types';
 
 interface SettingsViewProps {
@@ -22,10 +23,10 @@ interface SettingsViewProps {
   onDeleteSupplier: (id: string) => Promise<void>;
   onSaveBusinessConfig: (config: BusinessConfig) => Promise<void>;
   onDisconnectPlatform: (platform: 'tripadvisor' | 'google') => Promise<void>;
-  initialSubSection?: 'prefermenti' | 'assets' | 'staff' | 'suppliers' | 'business' | null;
+  initialSubSection?: 'prefermenti' | 'assets' | 'staff' | 'suppliers' | 'business' | 'pricing' | null;
 }
 
-type SettingsSubSection = 'prefermenti' | 'assets' | 'staff' | 'suppliers' | 'business' | null;
+type SettingsSubSection = 'prefermenti' | 'assets' | 'staff' | 'suppliers' | 'business' | 'pricing' | null;
 
 const SettingsView: React.FC<SettingsViewProps> = ({
   userData,
@@ -50,6 +51,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'business' as SettingsSubSection, label: 'La Tua Attività', icon: Store },
     { id: 'prefermenti' as SettingsSubSection, label: 'Prefermenti', icon: Beaker },
     { id: 'assets' as SettingsSubSection, label: 'Costi e Asset', icon: BarChart3 },
+    { id: 'pricing' as SettingsSubSection, label: 'Pricing Calculator', icon: Calculator },
     { id: 'staff' as SettingsSubSection, label: 'Staff', icon: Users },
     { id: 'suppliers' as SettingsSubSection, label: 'Fornitori', icon: Truck },
   ];
@@ -89,6 +91,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         {activeSubSection === 'assets' && (
           <AssetsView
             userData={userData}
+            employees={employees}
+            onUpdateBep={onUpdateBep}
+          />
+        )}
+
+        {activeSubSection === 'pricing' && (
+          <PricingView
+            bepConfig={userData.bepConfig}
             employees={employees}
             onUpdateBep={onUpdateBep}
           />
@@ -143,6 +153,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   {section.id === 'business' && 'Configura nome, indirizzo e collegamenti Google/TripAdvisor'}
                   {section.id === 'prefermenti' && 'Configura i prefermenti predefiniti'}
                   {section.id === 'assets' && 'Gestisci costi fissi e parametri variabili'}
+                  {section.id === 'pricing' && 'Calcola prezzi basati sul product mix'}
                   {section.id === 'staff' && 'Gestisci collaboratori e dipendenti'}
                   {section.id === 'suppliers' && 'Gestisci database fornitori'}
                 </p>

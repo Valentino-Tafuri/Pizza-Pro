@@ -5,7 +5,7 @@ import { Preparation, FifoLabel } from '../../types';
 
 interface FifoLabelsViewProps {
   preparations: Preparation[];
-  onGenerateLabels: (labels: FifoLabel[]) => Promise<void>;
+  onGenerateLabels: (labels: FifoLabel[], stockQuantity: number) => Promise<void>;
   initialPreparationId?: string;
 }
 
@@ -20,10 +20,10 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
   const [selectedPrepId, setSelectedPrepId] = useState<string>(initialPreparationId || '');
   const [expiryDate, setExpiryDate] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
-  const [printCopies, setPrintCopies] = useState<number>(1); // Numero di copie da stampare
   const [generatedLabels, setGeneratedLabels] = useState<FifoLabel[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [labelCount, setLabelCount] = useState<number>(0); // Conteggio etichette necessarie
 
   // Per impasti: moltiplicatore farina e calcolo cassette
   const [flourMultiplier, setFlourMultiplier] = useState<number>(1);
@@ -109,6 +109,21 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
     };
   }, [selectedPrep, flourMultiplier]);
 
+  // Calcola automaticamente il numero di etichette necessarie
+  useEffect(() => {
+    if (selectedPrep) {
+      if (isImpasto(selectedPrep) && impastoCalculations) {
+        // Per impasti: una etichetta per cassetta
+        setLabelCount(impastoCalculations.numCassette);
+      } else {
+        // Per topping: una etichetta per quantità
+        setLabelCount(quantity);
+      }
+    } else {
+      setLabelCount(0);
+    }
+  }, [selectedPrep, impastoCalculations, quantity]);
+
   const minDate = new Date().toISOString().split('T')[0];
 
   const generateQRCode = async (data: string): Promise<string> => {
@@ -136,6 +151,12 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
       return;
     }
 
+    // Previeni doppia generazione
+    if (isGenerating) {
+      console.warn('[FifoLabelsView] Generazione già in corso, ignoro richiesta');
+      return;
+    }
+
     setIsGenerating(true);
     try {
       console.log('[FifoLabelsView] Inizio generazione etichetta singola:', {
@@ -144,9 +165,10 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
         expiryDate
       });
 
-      // Genera UNA SOLA etichetta
+      // Genera UNA SOLA etichetta con ID univoco
       const timestamp = Date.now();
-      const labelId = `${selectedPrep.id}_${timestamp}_0`;
+      const randomSuffix = Math.random().toString(36).substr(2, 6); // Aggiungi random per evitare duplicati
+      const labelId = `${selectedPrep.id}_${timestamp}_${randomSuffix}`;
       const qrData = `FIFO:${labelId}`;
 
       const qrCodeImage = await generateQRCode(qrData);
@@ -180,27 +202,170 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
         ...(cassetteInfo && { cassetteInfo })
       };
 
-      // Salva solo questa etichetta (per il database)
-      await onGenerateLabels([label]);
+      // Salva SOLO UNA etichetta nel database, ma passa la quantità di stock corretta
+      console.log('[FifoLabelsView] Salvataggio etichetta nel database:', labelId, '- Stock da aggiungere:', labelCount);
+      await onGenerateLabels([label], labelCount);
 
-      console.log('[FifoLabelsView] Etichetta generata con successo');
-      setGeneratedLabels([label]);
+      console.log('[FifoLabelsView] Etichetta generata e salvata con successo');
+      setGeneratedLabels([label]); // Solo una etichetta nello stato
       setShowPrintPreview(true);
 
-      alert(`Etichetta generata con successo!\n\nPuoi ora stamparla cliccando sul pulsante "Stampa".\n\nImposta il numero di copie da stampare (${printCopies} copia/e).`);
+      alert(`✅ Etichetta generata con successo!\n\n📋 Etichette necessarie: ${labelCount}\n\nClicca "Stampa" per aprire la finestra di stampa.\nImposta il numero di copie nelle impostazioni di stampa del sistema.`);
     } catch (error) {
       console.error('[FifoLabelsView] Errore generazione etichetta:', error);
       const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
-      alert(`Errore durante la generazione dell'etichetta:\n${errorMessage}\n\nControlla la console per maggiori dettagli.`);
+      alert(`❌ Errore durante la generazione dell'etichetta:\n${errorMessage}\n\nControlla la console per maggiori dettagli.`);
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handlePrint = () => {
-    // Per stampanti termiche: stampa una singola etichetta per volta
-    // Il CSS mostrerà solo una etichetta per pagina
-    window.print();
+    if (generatedLabels.length === 0) {
+      alert('Nessuna etichetta da stampare. Genera prima un\'etichetta.');
+      return;
+    }
+
+    console.log('[FifoLabelsView] Stampa richiesta - Etichette necessarie:', labelCount);
+
+    // Apri finestra di stampa con contenuto dinamico
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Impossibile aprire la finestra di stampa. Controlla i popup blocker.');
+      return;
+    }
+
+    const labelToPrint = generatedLabels[0]; // Prendi l'unica etichetta
+    const createdAt = labelToPrint.createdAt?.toDate?.() || new Date(labelToPrint.createdAt);
+    const expiryDateLabel = labelToPrint.expiryDate?.toDate?.() || new Date(labelToPrint.expiryDate);
+
+    // Genera HTML con UNA SOLA etichetta - l'utente imposterà le copie nella finestra di stampa
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Etichetta FIFO - ${labelToPrint.preparationName}</title>
+        <style>
+          @page {
+            size: 80mm 40mm;
+            margin: 0;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+          }
+          .label-page {
+            width: 80mm;
+            height: 40mm;
+            box-sizing: border-box;
+            border: 2px solid black;
+            padding: 2mm;
+            display: flex;
+            gap: 2mm;
+            font-size: 8px;
+          }
+          .qr-code {
+            flex-shrink: 0;
+            width: 20mm;
+            height: 20mm;
+          }
+          .qr-code img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+          .label-info {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+          }
+          .label-info h4 {
+            font-weight: bold;
+            margin-bottom: 1mm;
+            font-size: 9px;
+            text-transform: uppercase;
+          }
+          .label-info .expiry {
+            background-color: #fee2e2;
+            border: 1px solid #fca5a5;
+            border-radius: 2px;
+            padding: 1mm 2mm;
+            margin-bottom: 1mm;
+          }
+          .label-info .expiry p {
+            font-weight: bold;
+            color: #b91c1c;
+            font-size: 8px;
+            margin: 0;
+          }
+          .label-info .cassette-info {
+            background-color: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 2px;
+            padding: 0.5mm 2mm;
+            margin-bottom: 1mm;
+          }
+          .label-info .cassette-info p {
+            font-weight: bold;
+            color: #b45309;
+            font-size: 7px;
+            margin: 0;
+          }
+          .label-info .date-created, .label-info .id-text {
+            font-size: 7px;
+            color: #6b7280;
+            margin: 0;
+          }
+          .print-info {
+            display: none;
+          }
+          @media screen {
+            .print-info {
+              display: block;
+              margin-top: 10mm;
+              padding: 4mm;
+              background: #f0f9ff;
+              border: 1px solid #0ea5e9;
+              border-radius: 4px;
+              font-size: 12px;
+              color: #0369a1;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="label-page">
+          <div class="qr-code">
+            <img src="${labelToPrint.qrCode}" alt="QR Code" />
+          </div>
+          <div class="label-info">
+            <div>
+              <h4>${labelToPrint.preparationName}</h4>
+              ${labelToPrint.cassetteInfo ? `<div class="cassette-info"><p>${labelToPrint.cassetteInfo}</p></div>` : ''}
+              <p class="date-created">Creato: ${createdAt.toLocaleDateString('it-IT')}</p>
+              <div class="expiry"><p>SCADENZA: ${expiryDateLabel.toLocaleDateString('it-IT')}</p></div>
+              <p class="id-text">ID: ${labelToPrint.id.slice(-12)}</p>
+            </div>
+          </div>
+        </div>
+        <div class="print-info">
+          <strong>📋 Etichette necessarie: ${labelCount}</strong><br>
+          Imposta il numero di copie nelle impostazioni di stampa del sistema.
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Attendi che il contenuto sia caricato prima di avviare la stampa
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
   };
 
   return (
@@ -413,39 +578,24 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
             </div>
           )}
 
-          {/* Numero Copie da Stampare - Per tutti i tipi */}
-          {generatedLabels.length > 0 && (
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <label className="block text-sm font-bold text-purple-800 mb-2">
-                Numero Copie da Stampare
-              </label>
-              <p className="text-xs text-purple-600 mb-3 font-semibold">
-                Per stampanti termiche: stampa una etichetta per volta. Imposta quante copie vuoi stampare.
-              </p>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setPrintCopies(Math.max(1, printCopies - 1))}
-                  className="w-12 h-12 bg-purple-100 hover:bg-purple-200 rounded-xl flex items-center justify-center transition-all active:scale-95"
-                >
-                  <Minus size={20} />
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={printCopies}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 1;
-                    setPrintCopies(Math.min(100, Math.max(1, val)));
-                  }}
-                  className="w-24 text-center bg-white border border-purple-300 rounded-xl py-4 text-lg font-black focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  onClick={() => setPrintCopies(Math.min(100, printCopies + 1))}
-                  className="w-12 h-12 bg-purple-100 hover:bg-purple-200 rounded-xl flex items-center justify-center transition-all active:scale-95"
-                >
-                  <Plus size={20} />
-                </button>
+          {/* Conteggio Etichette Necessarie - Mostra sempre quando c'è una selezione */}
+          {selectedPrep && labelCount > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-green-800">
+                    📋 Etichette Necessarie
+                  </p>
+                  <p className="text-xs text-green-600 font-semibold mt-1">
+                    {isImpasto(selectedPrep)
+                      ? `${labelCount} etichette (una per cassetta)`
+                      : `${labelCount} etichette (una per unità)`
+                    }
+                  </p>
+                </div>
+                <div className="text-3xl font-black text-green-700">
+                  {labelCount}
+                </div>
               </div>
             </div>
           )}
@@ -477,8 +627,9 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
             <h4 className="text-sm font-black text-blue-900 mb-2">Istruzioni</h4>
             <ul className="text-xs font-semibold text-blue-800 space-y-1 list-disc list-inside">
               <li>Seleziona la preparazione e la data di scadenza</li>
-              <li>Genera le etichette necessarie (max 50 per volta)</li>
-              <li>Stampa le etichette e applicale ai contenitori</li>
+              <li>Controlla il numero di etichette necessarie (calcolato automaticamente)</li>
+              <li>Genera l'etichetta e clicca su "Stampa"</li>
+              <li>Imposta il numero di copie nelle impostazioni di stampa del sistema</li>
               <li>Scansiona il QR code per scaricare il prodotto</li>
             </ul>
           </div>
@@ -504,7 +655,7 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
                 className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white rounded-xl py-3 px-6 text-sm font-black transition-all active:scale-95"
               >
                 <Printer size={18} />
-                Stampa {printCopies} {printCopies === 1 ? 'Copia' : 'Copie'}
+                Stampa Etichetta
               </button>
             </div>
           </div>
@@ -559,115 +710,18 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
               </div>
             </div>
 
-            {/* Area stampa: ripete l'etichetta N volte, una per pagina */}
-            <div className="print-labels" style={{ display: 'none' }}>
-              {Array.from({ length: printCopies }).map((_, index) => (
-                <div
-                  key={index}
-                  className="label-print-single print:page-break-after-always"
-                  style={{ width: '80mm', height: '40mm' }}
-                >
-                  {generatedLabels[0] && (
-                    <div className="flex gap-3 h-full p-2">
-                      {/* QR Code */}
-                      <div className="flex-shrink-0">
-                        <img
-                          src={generatedLabels[0].qrCode}
-                          alt="QR Code"
-                          className="w-24 h-24"
-                        />
-                      </div>
-                      {/* Info */}
-                      <div className="flex-1 flex flex-col justify-between text-xs">
-                        <div>
-                          <h4 className="font-black text-black mb-1 text-[10px] uppercase">
-                            {generatedLabels[0].preparationName}
-                          </h4>
-                          {/* Info Cassetta per Impasti */}
-                          {generatedLabels[0].cassetteInfo && (
-                            <div className="bg-amber-100 border border-amber-300 rounded px-2 py-0.5 mb-1">
-                              <p className="text-[9px] font-black text-amber-800">
-                                {generatedLabels[0].cassetteInfo}
-                              </p>
-                            </div>
-                          )}
-                          <p className="text-[8px] text-gray-600 mb-1">
-                            Creato: {(generatedLabels[0].createdAt?.toDate?.() || new Date(generatedLabels[0].createdAt)).toLocaleDateString('it-IT')}
-                          </p>
-                          <div className="bg-red-100 border border-red-300 rounded px-2 py-1 mb-1">
-                            <p className="text-[8px] font-black text-red-700">
-                              SCADENZA: {(generatedLabels[0].expiryDate?.toDate?.() || new Date(generatedLabels[0].expiryDate)).toLocaleDateString('it-IT')}
-                            </p>
-                          </div>
-                          <p className="text-[7px] text-gray-400">
-                            ID: {generatedLabels[0].id.slice(-12)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* Nota: La stampa viene gestita dalla funzione handlePrint che apre una nuova finestra */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
+              <p className="text-xs font-semibold text-blue-800">
+                ℹ️ Etichette necessarie: <strong>{labelCount}</strong><br/>
+                La stampa aprirà una finestra con <strong>1 etichetta</strong>. Imposta il numero di copie ({labelCount}) nelle impostazioni di stampa del sistema operativo.
+              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print-area, .print-area * {
-            visibility: visible;
-          }
-          .print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 0;
-            margin: 0;
-          }
-          /* Nascondi anteprima schermo durante la stampa */
-          .screen-preview {
-            display: none !important;
-          }
-          /* Mostra solo le etichette da stampare */
-          .print-labels {
-            display: block !important;
-          }
-          .label-print-single {
-            page-break-after: always;
-            page-break-inside: avoid;
-            break-inside: avoid;
-            width: 80mm !important;
-            height: 40mm !important;
-            box-sizing: border-box;
-            border: 2px solid black;
-            margin: 0;
-            padding: 2mm;
-          }
-          /* Ultima etichetta non deve avere page-break */
-          .label-print-single:last-child {
-            page-break-after: auto;
-          }
-          @page {
-            size: 80mm 40mm;
-            margin: 0;
-          }
-        }
-        @media screen {
-          .label-print {
-            min-width: 80mm;
-            min-height: 40mm;
-          }
-          .print-labels {
-            display: none;
-          }
-        }
-      `}</style>
+      {/* Print Styles - Non più necessari, la stampa usa una finestra separata */}
     </div>
   );
 };

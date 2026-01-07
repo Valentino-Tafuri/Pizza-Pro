@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, X, Minus, ChevronDown } from 'lucide-react';
+import { Plus, X, Minus, Search } from 'lucide-react';
 import { Ingredient } from '../../types';
 import { FlourSelection } from '../../utils/doughCalculator';
 
@@ -16,7 +16,8 @@ export const FlourSelector: React.FC<FlourSelectorProps> = ({
   onUpdate,
   phaseLabel
 }) => {
-  const [selectedFlourId, setSelectedFlourId] = useState<string>('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const totalPercentage = flourSelections.reduce((sum, f) => sum + f.percentage, 0);
   const isValid = Math.abs(totalPercentage - 100) < 0.01;
@@ -27,6 +28,27 @@ export const FlourSelector: React.FC<FlourSelectorProps> = ({
     return availableFlours.filter(flour => !selectedIds.has(flour.id));
   }, [availableFlours, flourSelections]);
 
+  // Farine filtrate per ricerca
+  const filteredFlours = useMemo(() => {
+    if (!searchTerm.trim()) return availableFloursForSelect;
+    const term = searchTerm.toLowerCase();
+    return availableFloursForSelect.filter(flour =>
+      flour.name.toLowerCase().includes(term) ||
+      flour.category?.toLowerCase().includes(term)
+    );
+  }, [availableFloursForSelect, searchTerm]);
+
+  // Raggruppa per categoria
+  const groupedFlours = useMemo(() => {
+    const groups: Record<string, Ingredient[]> = {};
+    filteredFlours.forEach(flour => {
+      const category = flour.category || 'Altre';
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(flour);
+    });
+    return groups;
+  }, [filteredFlours]);
+
   const handleAddFlour = (flourId: string) => {
     if (!flourId) return;
 
@@ -36,7 +58,8 @@ export const FlourSelector: React.FC<FlourSelectorProps> = ({
 
     const newSelection: FlourSelection = { id: flourId, percentage: newPercentage };
     onUpdate([...flourSelections, newSelection]);
-    setSelectedFlourId('');
+    setIsModalOpen(false);
+    setSearchTerm('');
   };
 
   const handleRemoveFlour = (flourId: string) => {
@@ -156,38 +179,85 @@ export const FlourSelector: React.FC<FlourSelectorProps> = ({
         })}
       </div>
 
-      {/* Aggiungi farina - Stile iOS */}
+      {/* Pulsante Aggiungi farina */}
       {availableFloursForSelect.length > 0 && (
-        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-3">
-          <select
-            value={selectedFlourId}
-            onChange={(e) => {
-              const val = e.target.value;
-              setSelectedFlourId(val);
-              if (val) handleAddFlour(val);
-            }}
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none cursor-pointer"
-          >
-            <option value="">+ Aggiungi farina...</option>
-            {(() => {
-              const groupedByCategory: Record<string, Ingredient[]> = {};
-              availableFloursForSelect.forEach(flour => {
-                const category = flour.category || 'Altre';
-                if (!groupedByCategory[category]) groupedByCategory[category] = [];
-                groupedByCategory[category].push(flour);
-              });
+        <button
+          type="button"
+          onClick={() => setIsModalOpen(true)}
+          className="w-full border-2 border-dashed border-blue-300 rounded-2xl py-4 px-6 text-blue-600 font-bold text-sm hover:bg-blue-50 hover:border-blue-400 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+        >
+          <Plus size={18} />
+          Aggiungi Farina
+        </button>
+      )}
 
-              return Object.entries(groupedByCategory).map(([category, flours]) => (
-                <optgroup key={category} label={category}>
-                  {flours.map(flour => (
-                    <option key={flour.id} value={flour.id}>
-                      {flour.name}
-                    </option>
+      {/* Modal Aggiungi Farina */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl max-h-[80vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h3 className="text-2xl font-black text-gray-900">Aggiungi Farina</h3>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setSearchTerm('');
+                }}
+                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-600" />
+              </button>
+            </div>
+
+            {/* Ricerca */}
+            <div className="p-4 border-b border-gray-100">
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Cerca farina..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Lista Farine */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredFlours.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 font-semibold text-sm">
+                    {searchTerm ? 'Nessuna farina trovata' : 'Nessuna farina disponibile'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(groupedFlours).map(([category, flours]: [string, Ingredient[]]) => (
+                    <div key={category}>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 py-2">
+                        {category}
+                      </p>
+                      {flours.map(flour => (
+                        <button
+                          key={flour.id}
+                          type="button"
+                          onClick={() => handleAddFlour(flour.id)}
+                          className="w-full text-left p-4 bg-gray-50 hover:bg-blue-50 rounded-2xl mb-2 transition-all active:scale-[0.98] border border-transparent hover:border-blue-200"
+                        >
+                          <p className="font-bold text-gray-900">{flour.name}</p>
+                          <p className="text-xs font-semibold text-gray-500 uppercase mt-0.5">
+                            {flour.category}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
                   ))}
-                </optgroup>
-              ));
-            })()}
-          </select>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

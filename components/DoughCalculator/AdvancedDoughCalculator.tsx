@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AlertTriangle, Plus, X, Save, Sliders, FileDown, Settings, Clock, Thermometer, Flame, ChevronDown, ChevronUp } from 'lucide-react';
-import { Ingredient } from '../../types';
+import { AlertTriangle, Plus, Minus, X, Save, Sliders, FileDown, Settings, Clock, Thermometer, Flame, ChevronDown, ChevronUp, Search, Check, PlusCircle } from 'lucide-react';
+import { Ingredient, Unit, Supplier } from '../../types';
+import { normalizeText } from '../../utils/textUtils';
 import { Preferment } from '../Views/PrefermentiView';
 import { FlourSelection, AdditionalIngredient } from '../../utils/doughCalculator';
 import { useDoughCalculations } from '../../hooks/useDoughCalculations';
@@ -10,52 +11,119 @@ import { IOSStepper } from './IOSStepper';
 import { RecipeSummary } from './RecipeSummary';
 import { generateRecipePDF } from '../../utils/pdfGenerator';
 
+interface AdvancedCalculatorFormData {
+  recipeName: string;
+  recipeCategory: string;
+  totalHydration: number;
+  multiplier: number;
+  portionWeight?: number;
+  // Pre-fermento
+  usePreferment: boolean;
+  selectedPrefermentId: string | null;
+  prefermentFlourPercentage: number;
+  prefermentFlourSelections: FlourSelection[];
+  // Autolisi
+  useAutolysis: boolean;
+  autolysisFlourPercentage: number;
+  autolysisHydration: number;
+  autolysisSaltPercentage: number;
+  autolysisFlourSelections: FlourSelection[];
+  // Chiusura
+  saltPercentage: number;
+  yeastPercentage: number;
+  oilPercentage: number;
+  maltPercentage: number;
+  additionalIngredients: AdditionalIngredient[];
+  closureFlourSelections: FlourSelection[];
+  // Ingredienti selezionati
+  selectedWaterId: string | null;
+  selectedSaltId: string | null;
+  selectedOilId: string | null;
+  selectedYeastId: string | null;
+  selectedMaltId: string | null;
+  // Gestione fasi
+  prefStorageTime: string;
+  prefStorageTemp: string;
+  prefProcedure: string;
+  autolysisTime: string;
+  autolysisTemp: string;
+  autolysisProcedure: string;
+  mixingTime: string;
+  mixingTemp: string;
+  mixingProcedure: string;
+  usePuntata: boolean;
+  puntataTime: string;
+  puntataTemp: string;
+  puntataProcedure: string;
+  usePreShape: boolean;
+  apprettoTime: string;
+  apprettoTemp: string;
+  apprettoProcedure: string;
+  preShapeTime: string;
+  preShapeTemp: string;
+  preShapeProcedure: string;
+  shapeTime: string;
+  shapeTemp: string;
+  shapeProcedure: string;
+  cookingTime: string;
+  cookingTemp: string;
+  cookingProcedure: string;
+}
+
 interface AdvancedDoughCalculatorProps {
   ingredients: Ingredient[];
   preferments: Preferment[];
   onSave?: (recipe: any) => void;
   userName?: string; // Nome utente per il PDF
+  onAddIngredient?: (ing: Ingredient) => Promise<string | undefined>;
+  onAddSupplier?: (sup: any) => Promise<string | undefined>;
+  suppliers?: any[];
+  initialData?: AdvancedCalculatorFormData; // Dati per modifica ricetta esistente
 }
 
 const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
   ingredients,
   preferments,
   onSave,
-  userName
+  userName,
+  onAddIngredient,
+  onAddSupplier,
+  suppliers = [],
+  initialData
 }) => {
   // Parametri generali
-  const [recipeName, setRecipeName] = useState('');
-  const [recipeCategory, setRecipeCategory] = useState('Pizza');
+  const [recipeName, setRecipeName] = useState(initialData?.recipeName || '');
+  const [recipeCategory, setRecipeCategory] = useState(initialData?.recipeCategory || 'Pizza');
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const categories = ['Pizza', 'Pane', 'Dolci', 'Panificazione', 'Focaccia', 'Taralli', 'Biscotti', 'Grissini', 'Crackers', 'Altro'];
 
   // Categorie che NON permettono liquidi aggiuntivi (solo acqua)
   const categoriesSoloAcqua = ['Pizza', 'Pane', 'Panificazione', 'Focaccia'];
   const allowExtraLiquids = !categoriesSoloAcqua.includes(recipeCategory);
-  const [totalHydration, setTotalHydration] = useState(70);
-  const [multiplier, setMultiplier] = useState(1);
-  const [portionWeight, setPortionWeight] = useState<number | undefined>(270);
-  
+  const [totalHydration, setTotalHydration] = useState(initialData?.totalHydration ?? 70);
+  const [multiplier, setMultiplier] = useState(initialData?.multiplier ?? 1);
+  const [portionWeight, setPortionWeight] = useState<number | undefined>(initialData?.portionWeight ?? 270);
+
   // Pre-fermento
-  const [usePreferment, setUsePreferment] = useState(false);
-  const [selectedPrefermentId, setSelectedPrefermentId] = useState<string | null>(null);
-  const [prefermentFlourPercentage, setPrefermentFlourPercentage] = useState(20);
-  const [prefermentFlourSelections, setPrefermentFlourSelections] = useState<FlourSelection[]>([]);
-  
+  const [usePreferment, setUsePreferment] = useState(initialData?.usePreferment ?? false);
+  const [selectedPrefermentId, setSelectedPrefermentId] = useState<string | null>(initialData?.selectedPrefermentId ?? null);
+  const [prefermentFlourPercentage, setPrefermentFlourPercentage] = useState(initialData?.prefermentFlourPercentage ?? 20);
+  const [prefermentFlourSelections, setPrefermentFlourSelections] = useState<FlourSelection[]>(initialData?.prefermentFlourSelections ?? []);
+
   // Autolisi
-  const [useAutolysis, setUseAutolysis] = useState(false);
-  const [autolysisFlourPercentage, setAutolysisFlourPercentage] = useState(70);
-  const [autolysisHydration, setAutolysisHydration] = useState(60);
-  const [autolysisSaltPercentage, setAutolysisSaltPercentage] = useState(0);
-  const [autolysisFlourSelections, setAutolysisFlourSelections] = useState<FlourSelection[]>([]);
-  
+  const [useAutolysis, setUseAutolysis] = useState(initialData?.useAutolysis ?? false);
+  const [autolysisFlourPercentage, setAutolysisFlourPercentage] = useState(initialData?.autolysisFlourPercentage ?? 70);
+  const [autolysisHydration, setAutolysisHydration] = useState(initialData?.autolysisHydration ?? 60);
+  const [autolysisSaltPercentage, setAutolysisSaltPercentage] = useState(initialData?.autolysisSaltPercentage ?? 0);
+  const [autolysisFlourSelections, setAutolysisFlourSelections] = useState<FlourSelection[]>(initialData?.autolysisFlourSelections ?? []);
+
   // Chiusura
-  const [saltPercentage, setSaltPercentage] = useState(2.5); // Sale totale ricetta
-  const [yeastPercentage, setYeastPercentage] = useState(0.5);
-  const [oilPercentage, setOilPercentage] = useState(0);
-  const [maltPercentage, setMaltPercentage] = useState(0);
-  const [additionalIngredients, setAdditionalIngredients] = useState<AdditionalIngredient[]>([]);
-  const [closureFlourSelections, setClosureFlourSelections] = useState<FlourSelection[]>([]);
+  const [saltPercentage, setSaltPercentage] = useState(initialData?.saltPercentage ?? 2.5); // Sale totale ricetta
+  const [yeastPercentage, setYeastPercentage] = useState(initialData?.yeastPercentage ?? 0.5);
+  const [oilPercentage, setOilPercentage] = useState(initialData?.oilPercentage ?? 0);
+  const [maltPercentage, setMaltPercentage] = useState(initialData?.maltPercentage ?? 0);
+  const [additionalIngredients, setAdditionalIngredients] = useState<AdditionalIngredient[]>(initialData?.additionalIngredients ?? []);
+  const [closureFlourSelections, setClosureFlourSelections] = useState<FlourSelection[]>(initialData?.closureFlourSelections ?? []);
 
   // Liquidi aggiuntivi (vino, latte, birra, ecc.) - solo per categorie non-pizza
   interface ExtraLiquid {
@@ -69,52 +137,87 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
 
   // === PARAMETRI GESTIONE FASI ===
   // Gestione Pre-fermento (tempo in ore, temperatura in °C)
-  const [prefStorageTime, setPrefStorageTime] = useState<string>('12-24');
-  const [prefStorageTemp, setPrefStorageTemp] = useState<string>('18-20');
-  const [prefProcedure, setPrefProcedure] = useState<string>('Mescolare farina, acqua e lievito. Coprire e lasciar maturare.');
+  const [prefStorageTime, setPrefStorageTime] = useState<string>(initialData?.prefStorageTime ?? '12-24');
+  const [prefStorageTemp, setPrefStorageTemp] = useState<string>(initialData?.prefStorageTemp ?? '18-20');
+  const [prefProcedure, setPrefProcedure] = useState<string>(initialData?.prefProcedure ?? 'Mescolare farina, acqua e lievito. Coprire e lasciar maturare.');
 
   // Gestione Autolisi
-  const [autolysisTime, setAutolysisTime] = useState<string>('30-60');
-  const [autolysisTemp, setAutolysisTemp] = useState<string>('T.A.');
-  const [autolysisProcedure, setAutolysisProcedure] = useState<string>('Mescolare farina e acqua fino a formare un impasto omogeneo. Coprire e lasciar riposare.');
+  const [autolysisTime, setAutolysisTime] = useState<string>(initialData?.autolysisTime ?? '30-60');
+  const [autolysisTemp, setAutolysisTemp] = useState<string>(initialData?.autolysisTemp ?? 'T.A.');
+  const [autolysisProcedure, setAutolysisProcedure] = useState<string>(initialData?.autolysisProcedure ?? 'Mescolare farina e acqua fino a formare un impasto omogeneo. Coprire e lasciar riposare.');
 
   // Gestione Impasto (chiusura)
-  const [mixingTime, setMixingTime] = useState<string>('15-20');
-  const [mixingTemp, setMixingTemp] = useState<string>('24');
-  const [mixingProcedure, setMixingProcedure] = useState<string>('Versare acqua con sale e lievito nella macchina. Aggiungere la farina a pioggia. Impastare fino a incordatura.');
+  const [mixingTime, setMixingTime] = useState<string>(initialData?.mixingTime ?? '15-20');
+  const [mixingTemp, setMixingTemp] = useState<string>(initialData?.mixingTemp ?? '24');
+  const [mixingProcedure, setMixingProcedure] = useState<string>(initialData?.mixingProcedure ?? 'Versare acqua con sale e lievito nella macchina. Aggiungere la farina a pioggia. Impastare fino a incordatura.');
 
   // Puntata (prima lievitazione in massa)
-  const [puntataTime, setPuntataTime] = useState<string>('1-2');
-  const [puntataTemp, setPuntataTemp] = useState<string>('T.A.');
-  const [puntataProcedure, setPuntataProcedure] = useState<string>('Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.');
+  const [usePuntata, setUsePuntata] = useState<boolean>(initialData?.usePuntata ?? true);
+  const [puntataTime, setPuntataTime] = useState<string>(initialData?.puntataTime ?? '1-2');
+  const [puntataTemp, setPuntataTemp] = useState<string>(initialData?.puntataTemp ?? 'T.A.');
+  const [puntataProcedure, setPuntataProcedure] = useState<string>(initialData?.puntataProcedure ?? 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.');
+
+  // Appretto vs Pre-shape
+  const [usePreShape, setUsePreShape] = useState<boolean>(initialData?.usePreShape ?? false); // false = Appretto, true = Pre-shape
 
   // Appretto (lievitazione dopo staglio)
-  const [apprettoTime, setApprettoTime] = useState<string>('4-8');
-  const [apprettoTemp, setApprettoTemp] = useState<string>('T.A. / 4°C');
-  const [apprettoProcedure, setApprettoProcedure] = useState<string>('Formare i panetti e lasciar lievitare. Conservare in frigorifero se necessario.');
+  const [apprettoTime, setApprettoTime] = useState<string>(initialData?.apprettoTime ?? '4-8');
+  const [apprettoTemp, setApprettoTemp] = useState<string>(initialData?.apprettoTemp ?? 'T.A. / 4°C');
+  const [apprettoProcedure, setApprettoProcedure] = useState<string>(initialData?.apprettoProcedure ?? 'Formare i panetti e lasciar lievitare. Conservare in frigorifero se necessario.');
+
+  // Pre-shape (pre-forma prima dello shape)
+  const [preShapeTime, setPreShapeTime] = useState<string>(initialData?.preShapeTime ?? '15-30');
+  const [preShapeTemp, setPreShapeTemp] = useState<string>(initialData?.preShapeTemp ?? 'T.A.');
+  const [preShapeProcedure, setPreShapeProcedure] = useState<string>(initialData?.preShapeProcedure ?? 'Pre-formare i panetti in forma tondeggiante. Lasciar riposare coperti.');
+
+  // Shape (forma finale)
+  const [shapeTime, setShapeTime] = useState<string>(initialData?.shapeTime ?? '10-20');
+  const [shapeTemp, setShapeTemp] = useState<string>(initialData?.shapeTemp ?? 'T.A.');
+  const [shapeProcedure, setShapeProcedure] = useState<string>(initialData?.shapeProcedure ?? 'Formare i panetti nella forma finale. Sistemare su teglia o cestino.');
 
   // Cottura
-  const [cookingTime, setCookingTime] = useState<string>('60-90');
-  const [cookingTemp, setCookingTemp] = useState<string>('450-480');
-  const [cookingProcedure, setCookingProcedure] = useState<string>('Cuocere in forno preriscaldato fino a doratura uniforme.');
+  const [cookingTime, setCookingTime] = useState<string>(initialData?.cookingTime ?? '60-90');
+  const [cookingTemp, setCookingTemp] = useState<string>(initialData?.cookingTemp ?? '450-480');
+  const [cookingProcedure, setCookingProcedure] = useState<string>(initialData?.cookingProcedure ?? 'Cuocere in forno preriscaldato fino a doratura uniforme.');
 
   // UI State
   const [selectedAdditionalIngredientId, setSelectedAdditionalIngredientId] = useState<string>('');
   const [newAdditionalIngredientPercentage, setNewAdditionalIngredientPercentage] = useState<number>(1);
+  const [showAdditionalIngredientModal, setShowAdditionalIngredientModal] = useState(false);
+  const [additionalIngredientSearch, setAdditionalIngredientSearch] = useState('');
+  const [selectedAdditionalCategory, setSelectedAdditionalCategory] = useState<string | null>(null);
+  
+  // Modal aggiunta ingredienti - Sistema a due schermate
+  const [showAddIngredientModal, setShowAddIngredientModal] = useState(false);
+  const [addIngredientModalScreen, setAddIngredientModalScreen] = useState<'search' | 'form'>('search'); // 'search' = lista ingredienti, 'form' = form nuovo ingrediente
+  const [addIngredientSearch, setAddIngredientSearch] = useState('');
+  const [newIngredientForm, setNewIngredientForm] = useState<Partial<Ingredient>>({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
+  const [isAddingNewCategoryIng, setIsAddingNewCategoryIng] = useState(false);
+  const [showSupModal, setShowSupModal] = useState(false);
+  const [supForm, setSupForm] = useState<Partial<Supplier>>({ name: '', phone: '', category: '', deliveryDays: [] });
+  const [supLoading, setSupLoading] = useState(false);
+
+    
+  // Categorie ingredienti
+  const ingredientCategories = useMemo(() => {
+    return Array.from(new Set(ingredients.map(i => i.category))).filter(Boolean) as string[];
+  }, [ingredients]);
   
   // Ingredienti base selezionati
-  const [selectedWaterId, setSelectedWaterId] = useState<string | null>(null);
-  const [selectedSaltId, setSelectedSaltId] = useState<string | null>(null);
-  const [selectedOilId, setSelectedOilId] = useState<string | null>(null);
-  const [selectedYeastId, setSelectedYeastId] = useState<string | null>(null);
-  const [selectedMaltId, setSelectedMaltId] = useState<string | null>(null);
+  const [selectedWaterId, setSelectedWaterId] = useState<string | null>(initialData?.selectedWaterId ?? null);
+  const [selectedSaltId, setSelectedSaltId] = useState<string | null>(initialData?.selectedSaltId ?? null);
+  const [selectedOilId, setSelectedOilId] = useState<string | null>(initialData?.selectedOilId ?? null);
+  const [selectedYeastId, setSelectedYeastId] = useState<string | null>(initialData?.selectedYeastId ?? null);
+  const [selectedMaltId, setSelectedMaltId] = useState<string | null>(initialData?.selectedMaltId ?? null);
   
-  // Filtra solo farine dall'economato
+  // Filtra solo farine dall'economato - include tutti i prodotti della categoria "farina" (case insensitive)
   const availableFlours = useMemo(() => {
-    return ingredients.filter(ing => 
-      ing.category.toLowerCase().includes('farina') || 
-      ing.name.toLowerCase().includes('farina')
-    );
+    return ingredients.filter(ing => {
+      const categoryLower = ing.category?.toLowerCase() || '';
+      const nameLower = ing.name?.toLowerCase() || '';
+      // Include se la categoria contiene "farina" o se il nome contiene "farina"
+      return categoryLower.includes('farina') || nameLower.includes('farina');
+    });
   }, [ingredients]);
   
   // Filtra ingredienti per categoria (acqua, sale, olio, lievito, malto)
@@ -327,6 +430,25 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
     setSelectedAdditionalIngredientId('');
     setNewAdditionalIngredientPercentage(1);
   };
+
+  const handleAddAdditionalIngredientWithValue = React.useCallback((ingredientId: string, percentage: number) => {
+    if (!ingredientId || percentage <= 0) return;
+    
+    // Usa una funzione di callback per evitare problemi di re-render
+    setAdditionalIngredients(prev => {
+      // Verifica se l'ingrediente è già presente
+      if (prev.some(ing => ing.id === ingredientId)) {
+        return prev;
+      }
+      const newIng: AdditionalIngredient = { id: ingredientId, percentage };
+      return [...prev, newIng];
+    });
+    
+    // Reset immediato senza delay
+    setSelectedAdditionalIngredientId('');
+    setNewAdditionalIngredientPercentage(1);
+    setShowAdditionalIngredientModal(false);
+  }, []);
   
   const handleRemoveAdditionalIngredient = (ingredientId: string) => {
     setAdditionalIngredients(additionalIngredients.filter(ing => ing.id !== ingredientId));
@@ -737,9 +859,18 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
             {availableFlours.length === 0 ? (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                 <p className="text-sm font-bold text-red-800">Nessuna farina disponibile</p>
-                <p className="text-xs text-red-600 mt-1">
+                <p className="text-xs text-red-600 mt-1 mb-2">
                   Aggiungi ingredienti con categoria "Farine" nell'Economato per poter creare ricette.
                 </p>
+                {onAddIngredient && (
+                  <button
+                    onClick={() => setShowAddIngredientModal(true)}
+                    className="w-full py-2 bg-blue-600 text-white rounded-xl font-black text-sm active:scale-95 transition-all"
+                  >
+                    <Plus size={16} className="inline mr-2" />
+                    Aggiungi Farina
+                  </button>
+                )}
               </div>
             ) : flourValidation.closurePercentage <= 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-xl p-4">
@@ -775,7 +906,12 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                 sublabel={selectedSaltId ? ingredients.find(i => i.id === selectedSaltId)?.name : 'Auto: Sale Fino'}
               />
               {!selectedSaltId && availableSalt.length === 0 && (
-                <p className="px-4 pb-3 text-xs text-red-500 font-semibold">Aggiungi sale all'economato</p>
+                <button
+                  onClick={() => setShowAddIngredientModal(true)}
+                  className="px-4 pb-3 text-xs text-blue-600 font-semibold hover:underline"
+                >
+                  Aggiungi sale all'economato
+                </button>
               )}
               {useAutolysis && autolysisSaltPercentage > 0 && (
                 <p className="px-4 pb-3 text-xs text-blue-600 font-semibold">
@@ -797,7 +933,12 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                 sublabel={selectedYeastId ? ingredients.find(i => i.id === selectedYeastId)?.name : 'Auto: primo disponibile'}
               />
               {!selectedYeastId && availableYeast.length === 0 && (
-                <p className="px-4 pb-3 text-xs text-red-500 font-semibold">Aggiungi lievito all'economato</p>
+                <button
+                  onClick={() => setShowAddIngredientModal(true)}
+                  className="px-4 pb-3 text-xs text-blue-600 font-semibold hover:underline"
+                >
+                  Aggiungi lievito all'economato
+                </button>
               )}
             </div>
 
@@ -833,10 +974,11 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
             </div>
           </div>
           
-          {/* Ingredienti aggiuntivi */}
+          {/* Ingredienti aggiuntivi - Stile FlourSelector */}
           <div>
             <h4 className="text-sm font-black text-gray-700 mb-3">Ingredienti Aggiuntivi</h4>
             
+            {/* Lista ingredienti selezionati - Stile FlourSelector */}
             {additionalIngredients.length > 0 && (
               <div className="space-y-2 mb-3">
                 {additionalIngredients.map(ing => {
@@ -844,27 +986,53 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                   if (!ingredient) return null;
                   
                   return (
-                    <div key={ing.id} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm text-black truncate">{ingredient.name}</p>
-                        <p className="text-xs text-gray-400 font-semibold">{ingredient.category}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={ing.percentage}
-                          onChange={(e) => handleUpdateAdditionalIngredientPercentage(ing.id, parseFloat(e.target.value) || 0)}
-                          className="w-20 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-black text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <span className="text-xs font-bold text-gray-400 w-6">%</span>
-                        <button
-                          onClick={() => handleRemoveAdditionalIngredient(ing.id)}
-                          className="p-2 text-red-400 hover:text-red-600 transition-colors"
-                        >
-                          <X size={16} />
-                        </button>
+                    <div key={ing.id} className="bg-gray-50 rounded-2xl overflow-hidden">
+                      <div className="flex items-center p-3 gap-3">
+                        {/* Info ingrediente */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-gray-900 truncate">{ingredient.name}</p>
+                          <p className="text-xs text-gray-500 font-medium">{ingredient.category}</p>
+                        </div>
+
+                        {/* Stepper iOS Style */}
+                        <div className="flex items-center gap-1">
+                          <div className="flex items-center bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateAdditionalIngredientPercentage(ing.id, Math.max(0, ing.percentage - 0.5))}
+                              className="w-10 h-10 flex items-center justify-center text-blue-600 hover:bg-gray-50 active:bg-gray-100 transition-colors border-r border-gray-200"
+                            >
+                              <Minus size={16} strokeWidth={2.5} />
+                            </button>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={ing.percentage}
+                              onChange={(e) => handleUpdateAdditionalIngredientPercentage(ing.id, parseFloat(e.target.value) || 0)}
+                              className="w-16 h-10 text-center text-sm font-bold text-gray-900 bg-transparent focus:outline-none focus:bg-blue-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateAdditionalIngredientPercentage(ing.id, ing.percentage + 0.5)}
+                              className="w-10 h-10 flex items-center justify-center text-blue-600 hover:bg-gray-50 active:bg-gray-100 transition-colors border-l border-gray-200"
+                            >
+                              <Plus size={16} strokeWidth={2.5} />
+                            </button>
+                          </div>
+
+                          <span className="text-xs font-bold text-gray-400 w-5">%</span>
+
+                          {/* Pulsante rimuovi */}
+                          <button
+                            onClick={() => handleRemoveAdditionalIngredient(ing.id)}
+                            className="p-2 text-red-400 hover:text-red-600 active:scale-95 transition-all"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -872,40 +1040,30 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
               </div>
             )}
             
-            {/* Barra per aggiungere nuovo ingrediente */}
-            <div className="bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3">
-              <select
-                value={selectedAdditionalIngredientId}
-                onChange={(e) => setSelectedAdditionalIngredientId(e.target.value)}
-                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Seleziona ingrediente...</option>
-                {availableIngredientsForSelect.map(ing => (
-                  <option key={ing.id} value={ing.id}>
-                    {ing.name} {ing.category && `(${ing.category})`}
-                  </option>
-                ))}
-              </select>
-              
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={newAdditionalIngredientPercentage || ''}
-                onChange={(e) => setNewAdditionalIngredientPercentage(parseFloat(e.target.value) || 0)}
-                placeholder="%"
-                className="w-24 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-black text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <span className="text-xs font-bold text-gray-400 w-6">%</span>
-              
+            {/* Pulsante per aprire modal selezione ingrediente */}
+            {availableIngredientsForSelect.length > 0 && (
               <button
-                onClick={handleAddAdditionalIngredient}
-                disabled={!selectedAdditionalIngredientId || newAdditionalIngredientPercentage <= 0}
-                className="bg-blue-600 text-white p-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                type="button"
+                onClick={() => {
+                  setShowAdditionalIngredientModal(true);
+                  setAdditionalIngredientSearch('');
+                  setSelectedAdditionalCategory(null);
+                }}
+                className="w-full p-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-500 font-bold text-sm flex items-center justify-center space-x-2 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 transition-all active:scale-95"
               >
-                <Plus size={18} />
+                <Plus size={20} />
+                <span>Aggiungi Ingrediente</span>
               </button>
-            </div>
+            )}
+
+            {/* Messaggio se non ci sono ingredienti disponibili */}
+            {availableIngredientsForSelect.length === 0 && additionalIngredients.length === 0 && (
+              <div className="bg-gray-50 rounded-xl p-4 text-center">
+                <p className="text-xs text-gray-500 font-semibold">
+                  Tutti gli ingredienti sono già stati aggiunti
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Gestione Impasto */}
@@ -952,92 +1110,206 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
       {/* Puntata */}
       <PhaseCard
         title="Puntata"
-        isActive={true}
-        onToggle={() => {}}
-        collapsible={false}
+        isActive={usePuntata}
+        onToggle={setUsePuntata}
+        collapsible={true}
       >
-        <div className="space-y-4">
-          <p className="text-xs text-gray-500 font-semibold">
-            Prima lievitazione dell'impasto in massa, prima dello staglio.
-          </p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div>
-              <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (ore)</label>
-              <input
-                type="text"
-                value={puntataTime}
-                onChange={(e) => setPuntataTime(e.target.value)}
-                placeholder="es: 1-2"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
-              />
+        {usePuntata && (
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500 font-semibold">
+              Prima lievitazione dell'impasto in massa, prima dello staglio.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (ore)</label>
+                <input
+                  type="text"
+                  value={puntataTime}
+                  onChange={(e) => setPuntataTime(e.target.value)}
+                  placeholder="es: 1-2"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Temperatura</label>
+                <input
+                  type="text"
+                  value={puntataTemp}
+                  onChange={(e) => setPuntataTemp(e.target.value)}
+                  placeholder="es: T.A."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                />
+              </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-500 mb-1 block">Temperatura</label>
-              <input
-                type="text"
-                value={puntataTemp}
-                onChange={(e) => setPuntataTemp(e.target.value)}
-                placeholder="es: T.A."
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+              <label className="text-xs font-bold text-gray-500 mb-1 block">Procedura</label>
+              <textarea
+                value={puntataProcedure}
+                onChange={(e) => setPuntataProcedure(e.target.value)}
+                rows={2}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium resize-none"
               />
             </div>
           </div>
-          <div>
-            <label className="text-xs font-bold text-gray-500 mb-1 block">Procedura</label>
-            <textarea
-              value={puntataProcedure}
-              onChange={(e) => setPuntataProcedure(e.target.value)}
-              rows={2}
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium resize-none"
-            />
-          </div>
-        </div>
+        )}
       </PhaseCard>
 
-      {/* Appretto */}
-      <PhaseCard
-        title="Appretto"
-        isActive={true}
-        onToggle={() => {}}
-        collapsible={false}
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-gray-500 font-semibold">
-            Lievitazione finale dopo lo staglio dei panetti ({portionWeight ? `${portionWeight}g` : 'peso da definire'}).
-          </p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div>
-              <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (ore)</label>
-              <input
-                type="text"
-                value={apprettoTime}
-                onChange={(e) => setApprettoTime(e.target.value)}
-                placeholder="es: 4-8"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
-              />
+      {/* Appretto / Pre-shape Toggle */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-black">{usePreShape ? "Pre-shape" : "Appretto"}</h3>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setUsePreShape(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                  !usePreShape
+                    ? 'bg-black text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-400'
+                }`}
+              >
+                Appretto
+              </button>
+              <button
+                onClick={() => setUsePreShape(true)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                  usePreShape
+                    ? 'bg-black text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-400'
+                }`}
+              >
+                Pre-shape
+              </button>
             </div>
-            <div>
-              <label className="text-xs font-bold text-gray-500 mb-1 block">Temperatura</label>
-              <input
-                type="text"
-                value={apprettoTemp}
-                onChange={(e) => setApprettoTemp(e.target.value)}
-                placeholder="es: T.A. / 4°C"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-bold text-gray-500 mb-1 block">Procedura</label>
-            <textarea
-              value={apprettoProcedure}
-              onChange={(e) => setApprettoProcedure(e.target.value)}
-              rows={2}
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium resize-none"
-            />
           </div>
         </div>
-      </PhaseCard>
+        <div className="p-6 space-y-4">
+          {!usePreShape ? (
+            // Appretto
+            <>
+              <p className="text-xs text-gray-500 font-semibold">
+                Lievitazione finale dopo lo staglio dei panetti ({portionWeight ? `${portionWeight}g` : 'peso da definire'}).
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (ore)</label>
+                  <input
+                    type="text"
+                    value={apprettoTime}
+                    onChange={(e) => setApprettoTime(e.target.value)}
+                    placeholder="es: 4-8"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Temperatura</label>
+                  <input
+                    type="text"
+                    value={apprettoTemp}
+                    onChange={(e) => setApprettoTemp(e.target.value)}
+                    placeholder="es: T.A. / 4°C"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Procedura</label>
+                <textarea
+                  value={apprettoProcedure}
+                  onChange={(e) => setApprettoProcedure(e.target.value)}
+                  rows={2}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium resize-none"
+                />
+              </div>
+            </>
+          ) : (
+            // Pre-shape
+            <>
+              <p className="text-xs text-gray-500 font-semibold">
+                Pre-forma i panetti prima dello shape finale ({portionWeight ? `${portionWeight}g` : 'peso da definire'}).
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (min)</label>
+                  <input
+                    type="text"
+                    value={preShapeTime}
+                    onChange={(e) => setPreShapeTime(e.target.value)}
+                    placeholder="es: 15-30"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Temperatura</label>
+                  <input
+                    type="text"
+                    value={preShapeTemp}
+                    onChange={(e) => setPreShapeTemp(e.target.value)}
+                    placeholder="es: T.A."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Procedura</label>
+                <textarea
+                  value={preShapeProcedure}
+                  onChange={(e) => setPreShapeProcedure(e.target.value)}
+                  rows={2}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium resize-none"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Shape - Solo se Pre-shape è attivo */}
+      {usePreShape && (
+        <PhaseCard
+          title="Shape"
+          isActive={true}
+          onToggle={() => {}}
+          collapsible={false}
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500 font-semibold">
+              Forma finale dei panetti dopo il pre-shape ({portionWeight ? `${portionWeight}g` : 'peso da definire'}).
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (min)</label>
+                <input
+                  type="text"
+                  value={shapeTime}
+                  onChange={(e) => setShapeTime(e.target.value)}
+                  placeholder="es: 10-20"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Temperatura</label>
+                <input
+                  type="text"
+                  value={shapeTemp}
+                  onChange={(e) => setShapeTemp(e.target.value)}
+                  placeholder="es: T.A."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 mb-1 block">Procedura</label>
+              <textarea
+                value={shapeProcedure}
+                onChange={(e) => setShapeProcedure(e.target.value)}
+                rows={2}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium resize-none"
+              />
+            </div>
+          </div>
+        </PhaseCard>
+      )}
 
       {/* Cottura */}
       <PhaseCard
@@ -1233,16 +1505,26 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                         temp: mixingTemp,
                         procedure: mixingProcedure
                       },
-                      puntata: {
+                      puntata: usePuntata ? {
                         time: puntataTime,
                         temp: puntataTemp,
                         procedure: puntataProcedure
-                      },
-                      appretto: {
+                      } : undefined,
+                      appretto: !usePreShape ? {
                         time: apprettoTime,
                         temp: apprettoTemp,
                         procedure: apprettoProcedure
-                      },
+                      } : undefined,
+                      preShape: usePreShape ? {
+                        time: preShapeTime,
+                        temp: preShapeTemp,
+                        procedure: preShapeProcedure
+                      } : undefined,
+                      shape: usePreShape ? {
+                        time: shapeTime,
+                        temp: shapeTemp,
+                        procedure: shapeProcedure
+                      } : undefined,
                       cooking: {
                         time: cookingTime,
                         temp: cookingTemp,
@@ -1318,18 +1600,122 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
             // Salva la ricetta
             if (onSave && result) {
               try {
+                // Salva tutti i dati del form per poterli ricaricare in modifica
+                const formData: AdvancedCalculatorFormData = {
+                  recipeName: recipeName.trim(),
+                  recipeCategory: recipeCategory.trim(),
+                  totalHydration,
+                  multiplier,
+                  portionWeight,
+                  // Pre-fermento
+                  usePreferment,
+                  selectedPrefermentId,
+                  prefermentFlourPercentage,
+                  prefermentFlourSelections,
+                  // Autolisi
+                  useAutolysis,
+                  autolysisFlourPercentage,
+                  autolysisHydration,
+                  autolysisSaltPercentage,
+                  autolysisFlourSelections,
+                  // Chiusura
+                  saltPercentage,
+                  yeastPercentage,
+                  oilPercentage,
+                  maltPercentage,
+                  additionalIngredients,
+                  closureFlourSelections,
+                  // Ingredienti selezionati
+                  selectedWaterId,
+                  selectedSaltId,
+                  selectedOilId,
+                  selectedYeastId,
+                  selectedMaltId,
+                  // Gestione fasi
+                  prefStorageTime,
+                  prefStorageTemp,
+                  prefProcedure,
+                  autolysisTime,
+                  autolysisTemp,
+                  autolysisProcedure,
+                  mixingTime,
+                  mixingTemp,
+                  mixingProcedure,
+                  usePuntata,
+                  puntataTime,
+                  puntataTemp,
+                  puntataProcedure,
+                  usePreShape,
+                  apprettoTime,
+                  apprettoTemp,
+                  apprettoProcedure,
+                  preShapeTime,
+                  preShapeTemp,
+                  preShapeProcedure,
+                  shapeTime,
+                  shapeTemp,
+                  shapeProcedure,
+                  cookingTime,
+                  cookingTemp,
+                  cookingProcedure
+                };
+
                 await onSave({
                   name: recipeName.trim(),
                   category: recipeCategory.trim(),
                   hydration: totalHydration,
+                  portionWeight,
                   preferment: usePreferment ? selectedPreferment : null,
                   calculation: result,
+                  formData, // Dati completi del form per ricaricamento
                   selectedIngredients: {
                     water: selectedWaterId,
                     salt: selectedSaltId,
                     oil: selectedOilId,
                     yeast: selectedYeastId,
                     malt: selectedMaltId
+                  },
+                  management: {
+                    preferment: usePreferment ? {
+                      time: prefStorageTime,
+                      temp: prefStorageTemp,
+                      procedure: prefProcedure
+                    } : undefined,
+                    autolysis: useAutolysis ? {
+                      time: autolysisTime,
+                      temp: autolysisTemp,
+                      procedure: autolysisProcedure
+                    } : undefined,
+                    mixing: {
+                      time: mixingTime,
+                      temp: mixingTemp,
+                      procedure: mixingProcedure
+                    },
+                    puntata: usePuntata ? {
+                      time: puntataTime,
+                      temp: puntataTemp,
+                      procedure: puntataProcedure
+                    } : undefined,
+                    appretto: !usePreShape ? {
+                      time: apprettoTime,
+                      temp: apprettoTemp,
+                      procedure: apprettoProcedure
+                    } : undefined,
+                    preShape: usePreShape ? {
+                      time: preShapeTime,
+                      temp: preShapeTemp,
+                      procedure: preShapeProcedure
+                    } : undefined,
+                    shape: usePreShape ? {
+                      time: shapeTime,
+                      temp: shapeTemp,
+                      procedure: shapeProcedure
+                    } : undefined,
+                    cooking: {
+                      time: cookingTime,
+                      temp: cookingTemp,
+                      procedure: cookingProcedure
+                    }
                   }
                 });
                 // Genera PDF automaticamente dopo il salvataggio
@@ -1358,16 +1744,26 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                       temp: mixingTemp,
                       procedure: mixingProcedure
                     },
-                    puntata: {
+                    puntata: usePuntata ? {
                       time: puntataTime,
                       temp: puntataTemp,
                       procedure: puntataProcedure
-                    },
-                    appretto: {
+                    } : undefined,
+                    appretto: !usePreShape ? {
                       time: apprettoTime,
                       temp: apprettoTemp,
                       procedure: apprettoProcedure
-                    },
+                    } : undefined,
+                    preShape: usePreShape ? {
+                      time: preShapeTime,
+                      temp: preShapeTemp,
+                      procedure: preShapeProcedure
+                    } : undefined,
+                    shape: usePreShape ? {
+                      time: shapeTime,
+                      temp: shapeTemp,
+                      procedure: shapeProcedure
+                    } : undefined,
                     cooking: {
                       time: cookingTime,
                       temp: cookingTemp,
@@ -1421,6 +1817,412 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
         </div>
       )}
       
+      {/* Modal per aggiungere ingredienti - Sistema a due schermate */}
+      {showAddIngredientModal && (
+        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300">
+          <div className="w-full max-w-3xl bg-white rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-y-auto max-h-[95vh] pb-12 scrollbar-hide relative">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8" />
+            
+            {/* Header con navigazione tra schermate */}
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-3xl font-black tracking-tighter">
+                {addIngredientModalScreen === 'search' ? 'Seleziona Ingrediente' : 'Nuovo Ingrediente'}
+              </h3>
+              <button 
+                onClick={() => { 
+                  setShowAddIngredientModal(false); 
+                  setAddIngredientSearch(''); 
+                  setAddIngredientModalScreen('search');
+                  setNewIngredientForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
+                  setIsAddingNewCategoryIng(false);
+                }} 
+                className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors"
+              >
+                <X size={24}/>
+              </button>
+            </div>
+
+            {/* PRIMA SCHERMATA: Lista ingredienti esistenti (stile LabView/MenuView) */}
+            {addIngredientModalScreen === 'search' && (
+              <div className="space-y-6">
+                {/* Barra di ricerca */}
+                <div className="relative">
+                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input 
+                    type="text" 
+                    placeholder="Cerca ingrediente o semilavorato..." 
+                    className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold" 
+                    value={addIngredientSearch} 
+                    onChange={(e) => setAddIngredientSearch(e.target.value)} 
+                  />
+                </div>
+
+                {/* Pulsante per passare al form nuovo ingrediente */}
+                <button
+                  onClick={() => setAddIngredientModalScreen('form')}
+                  className="w-full p-4 border-2 border-dashed border-blue-200 rounded-2xl text-blue-600 font-bold text-sm flex items-center justify-center space-x-2 hover:border-blue-300 hover:bg-blue-50 transition-all"
+                >
+                  <Plus size={20}/> <span>Nuovo Ingrediente</span>
+                </button>
+
+                {/* Lista ingredienti esistenti */}
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto scrollbar-hide">
+                  {ingredients
+                    .filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase()))
+                    .map(ing => (
+                      <button
+                        key={ing.id}
+                        onClick={() => {
+                          setShowAddIngredientModal(false);
+                          setAddIngredientSearch('');
+                          setAddIngredientModalScreen('search');
+                        }}
+                        className="w-full p-4 rounded-2xl text-left bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-black text-sm text-black">{ing.name}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{ing.category}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  
+                  {/* Messaggio nessun risultato */}
+                  {ingredients.filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase())).length === 0 && (
+                    <div className="text-center py-8 text-gray-400">
+                      <p className="text-sm font-bold">Nessun risultato trovato</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SECONDA SCHERMATA: Form nuovo ingrediente (stile EconomatoView) */}
+            {addIngredientModalScreen === 'form' && (
+              <div className="space-y-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Nome Ingrediente</label>
+                  <input 
+                    placeholder="Esempio: Farina Tipo 0" 
+                    className="w-full bg-gray-50 border-none rounded-2xl p-5 text-lg font-black" 
+                    value={newIngredientForm.name || ''} 
+                    onChange={e => setNewIngredientForm({...newIngredientForm, name: e.target.value})}
+                    onBlur={e => setNewIngredientForm({...newIngredientForm, name: normalizeText(e.target.value)})}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Categoria</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ingredientCategories.map(cat => (
+                      <button 
+                        key={cat} 
+                        onClick={() => { setNewIngredientForm({...newIngredientForm, category: cat}); setIsAddingNewCategoryIng(false); }}
+                        className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${newIngredientForm.category === cat ? 'bg-black text-white' : 'bg-gray-100 text-gray-400'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                    <button 
+                      onClick={() => setIsAddingNewCategoryIng(true)}
+                      className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center space-x-1 ${isAddingNewCategoryIng ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-400'}`}
+                    >
+                      <Plus size={12}/> <span>Nuova</span>
+                    </button>
+                  </div>
+                  {isAddingNewCategoryIng && (
+                    <input 
+                      autoFocus
+                      placeholder="Nome nuova categoria..." 
+                      className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-blue-100 border mt-2" 
+                      value={newIngredientForm.category || ''} 
+                      onChange={e => setNewIngredientForm({...newIngredientForm, category: e.target.value})} 
+                    />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Costo (€)</label>
+                    <div className="relative">
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-gray-300">€</span>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="0.00" 
+                        className="w-full bg-gray-50 border-none rounded-2xl p-5 pl-10 text-xl font-black" 
+                        value={newIngredientForm.pricePerUnit || ''} 
+                        onChange={e => setNewIngredientForm({...newIngredientForm, pricePerUnit: parseFloat(e.target.value) || 0})} 
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Unità di Misura</label>
+                    <div className="flex bg-gray-50 rounded-2xl p-1">
+                      {(['kg', 'l', 'unit'] as Unit[]).map(u => (
+                        <button 
+                          key={u} 
+                          onClick={() => setNewIngredientForm({...newIngredientForm, unit: u})}
+                          className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${newIngredientForm.unit === u ? 'bg-white shadow-sm text-black' : 'text-gray-400'}`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center px-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Fornitore Associato</label>
+                    {onAddSupplier && (
+                      <button 
+                        onClick={() => setShowSupModal(true)} 
+                        className="text-blue-500 text-[10px] font-black uppercase flex items-center space-x-1"
+                      >
+                        <PlusCircle size={12}/> <span>Nuovo Fornitore</span>
+                      </button>
+                    )}
+                  </div>
+                  <select 
+                    className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold appearance-none" 
+                    value={newIngredientForm.supplierId || ''} 
+                    onChange={e => setNewIngredientForm({...newIngredientForm, supplierId: e.target.value})}
+                  >
+                    <option value="">Nessun Fornitore</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Visualizzazione Prezzo Live */}
+                <div className="bg-gray-50 rounded-[2rem] p-6 text-center">
+                  <p className="text-[9px] font-black uppercase text-gray-400 mb-1">Prezzo in Anagrafica</p>
+                  <p className="text-3xl font-black text-black">€ {newIngredientForm.pricePerUnit?.toFixed(2) || '0.00'} <span className="text-sm text-gray-300">/ {newIngredientForm.unit?.toUpperCase() || 'KG'}</span></p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      setAddIngredientModalScreen('search');
+                      setNewIngredientForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
+                      setIsAddingNewCategoryIng(false);
+                    }}
+                    className="flex-1 py-5 bg-gray-100 text-gray-600 rounded-[2rem] font-black shadow-sm active:scale-95 transition-all"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!newIngredientForm.name || !newIngredientForm.category || !newIngredientForm.pricePerUnit) {
+                        alert("Compila tutti i campi obbligatori");
+                        return;
+                      }
+                      if (onAddIngredient) {
+                        const newId = await onAddIngredient(newIngredientForm as Ingredient);
+                        if (newId) {
+                          setShowAddIngredientModal(false);
+                          setAddIngredientSearch('');
+                          setAddIngredientModalScreen('search');
+                          setNewIngredientForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
+                          setIsAddingNewCategoryIng(false);
+                        }
+                      }
+                    }}
+                    className="flex-1 py-5 bg-black text-white rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all flex items-center justify-center space-x-2"
+                  >
+                    <Save size={20}/>
+                    <span>Salva in Economato</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal nuovo fornitore */}
+      {showSupModal && onAddSupplier && (
+        <div className="fixed inset-0 z-[400] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in zoom-in-95">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl space-y-4">
+            <h4 className="font-black text-xl tracking-tight">Nuovo Fornitore Rapido</h4>
+            <div className="space-y-3">
+              <input 
+                placeholder="Azienda" 
+                className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" 
+                value={supForm.name || ''} 
+                onChange={e => setSupForm({...supForm, name: e.target.value})} 
+                onBlur={e => setSupForm({...supForm, name: normalizeText(e.target.value)})}
+              />
+              <input 
+                placeholder="Telefono" 
+                className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" 
+                value={supForm.phone || ''} 
+                onChange={e => setSupForm({...supForm, phone: e.target.value})} 
+              />
+            </div>
+            <div className="flex space-x-2 pt-2">
+              <button 
+                onClick={() => setShowSupModal(false)} 
+                className="flex-1 py-4 bg-gray-100 rounded-2xl font-black text-gray-400"
+              >
+                Annulla
+              </button>
+              <button 
+                onClick={async () => {
+                  if (!supForm.name) return;
+                  setSupLoading(true);
+                  try {
+                    const newId = await onAddSupplier(supForm as Supplier);
+                    if (newId) {
+                      setNewIngredientForm({...newIngredientForm, supplierId: newId});
+                      setShowSupModal(false);
+                      setSupForm({ name: '', phone: '', category: '', deliveryDays: [] });
+                    }
+                  } finally {
+                    setSupLoading(false);
+                  }
+                }}
+                disabled={supLoading || !supForm.name}
+                className="flex-1 py-4 bg-black text-white rounded-2xl font-black shadow-lg disabled:opacity-50"
+              >
+                {supLoading ? 'Salvataggio...' : 'Salva'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal per selezionare ingrediente aggiuntivo - Stile come immagine 2 */}
+      {showAdditionalIngredientModal && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300"
+          onClick={(e) => {
+            // Click sul backdrop - chiedi conferma
+            if (e.target === e.currentTarget) {
+              if (window.confirm('Vuoi chiudere la selezione ingrediente e tornare alla ricetta?')) {
+                setShowAdditionalIngredientModal(false);
+                setAdditionalIngredientSearch('');
+                setSelectedAdditionalCategory(null);
+              }
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-lg bg-white rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 duration-300 max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black tracking-tight">Aggiungi Ingrediente</h3>
+              <button
+                onClick={() => {
+                  setShowAdditionalIngredientModal(false);
+                  setAdditionalIngredientSearch('');
+                  setSelectedAdditionalCategory(null);
+                }}
+                className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Barra di ricerca */}
+            <div className="relative mb-4">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Cerca ingrediente o semilavorato..."
+                className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-2 focus:ring-blue-500"
+                value={additionalIngredientSearch}
+                onChange={(e) => setAdditionalIngredientSearch(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            {/* Filtri categoria */}
+            <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-gray-100">
+              <button
+                type="button"
+                onClick={() => setSelectedAdditionalCategory(null)}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${
+                  selectedAdditionalCategory === null
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                }`}
+              >
+                Tutti
+              </button>
+              {Array.from(new Set(availableIngredientsForSelect.map(i => i.category))).filter(Boolean).sort().map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedAdditionalCategory(cat)}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${
+                    selectedAdditionalCategory === cat
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Pulsante nuovo ingrediente */}
+            <button
+              onClick={() => {
+                setShowAdditionalIngredientModal(false);
+                setShowAddIngredientModal(true);
+              }}
+              className="w-full p-4 border-2 border-dashed border-blue-200 rounded-2xl text-blue-600 font-bold text-sm flex items-center justify-center space-x-2 hover:border-blue-300 hover:bg-blue-50 transition-all mb-4"
+            >
+              <Plus size={20} />
+              <span>Nuovo Ingrediente</span>
+            </button>
+
+            {/* Lista ingredienti */}
+            <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+              {(() => {
+                const filtered = availableIngredientsForSelect.filter(ing => {
+                  const matchesSearch = !additionalIngredientSearch ||
+                    ing.name.toLowerCase().includes(additionalIngredientSearch.toLowerCase());
+                  const matchesCategory = !selectedAdditionalCategory ||
+                    ing.category === selectedAdditionalCategory;
+                  return matchesSearch && matchesCategory;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-gray-400">
+                      <p className="text-sm font-bold">Nessun ingrediente trovato</p>
+                    </div>
+                  );
+                }
+
+                return filtered.map(ing => (
+                  <button
+                    key={ing.id}
+                    onClick={() => {
+                      handleAddAdditionalIngredientWithValue(ing.id, 1.0);
+                      setShowAdditionalIngredientModal(false);
+                      setAdditionalIngredientSearch('');
+                      setSelectedAdditionalCategory(null);
+                    }}
+                    className="w-full p-4 rounded-2xl text-left bg-white border border-gray-100 hover:border-blue-200 hover:shadow-md active:scale-[0.98] transition-all"
+                  >
+                    <p className="font-black text-sm text-black">{ing.name}</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{ing.category}</p>
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -5,7 +5,7 @@ import FifoLabelsView from './FifoLabelsView';
 
 interface PreparationSettingsViewProps {
   preparations: Preparation[];
-  onGenerateLabels: (labels: FifoLabel[]) => Promise<void>;
+  onGenerateLabels: (labels: FifoLabel[], stockQuantity: number) => Promise<void>;
 }
 
 const PreparationSettingsView: React.FC<PreparationSettingsViewProps> = ({
@@ -96,8 +96,8 @@ const PreparationSettingsView: React.FC<PreparationSettingsViewProps> = ({
             <div className="flex-1 overflow-y-auto p-6">
               <FifoLabelsView
                 preparations={activeFifoPreparations}
-                onGenerateLabels={async (labels) => {
-                  await onGenerateLabels(labels);
+                onGenerateLabels={async (labels, stockQuantity) => {
+                  await onGenerateLabels(labels, stockQuantity);
                   // Non chiudere il popup automaticamente per permettere la stampa
                 }}
                 initialPreparationId={selectedPrepId}
