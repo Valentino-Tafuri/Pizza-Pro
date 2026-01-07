@@ -5,6 +5,7 @@ import { normalizeText } from '../../utils/textUtils';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
 import { Preferment } from './PrefermentiView';
 import AdvancedDoughCalculator from '../DoughCalculator/AdvancedDoughCalculator';
+import { RecipeSummary } from '../DoughCalculator/RecipeSummary';
 
 interface LabCalculatorViewProps {
   ingredients: Ingredient[];
@@ -94,6 +95,11 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   const [supForm, setSupForm] = useState<Partial<Supplier>>({ deliveryDays: [] });
   const [supLoading, setSupLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  
+  // Modal FIFO e gestione topping dopo salvataggio
+  const [showFifoModal, setShowFifoModal] = useState(false);
+  const [savedRecipe, setSavedRecipe] = useState<SubRecipe | null>(null);
+  const [viewingRecipe, setViewingRecipe] = useState<SubRecipe | null>(null);
   
   // Calcolatore state
   const [hydrationTotal, setHydrationTotal] = useState(70);
@@ -438,18 +444,23 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   };
 
   const handleEdit = (recipe: SubRecipe) => {
-    setEditingId(recipe.id);
-    setShowCalculator(false);
-    setShowManualForm(true);
-    setForm({
-      name: recipe.name,
-      category: recipe.category,
-      components: recipe.components || [],
-      initialWeight: recipe.initialWeight || 0,
-      yieldWeight: recipe.yieldWeight || 0,
-      portionWeight: recipe.portionWeight || 250,
-      procedure: recipe.procedure
-    });
+    // Se ha dati del calcolatore avanzato, mostra vista visualizzazione
+    if (recipe.advancedCalculatorData) {
+      setViewingRecipe(recipe);
+    } else {
+      setEditingId(recipe.id);
+      setShowCalculator(false);
+      setShowManualForm(true);
+      setForm({
+        name: recipe.name,
+        category: recipe.category,
+        components: recipe.components || [],
+        initialWeight: recipe.initialWeight || 0,
+        yieldWeight: recipe.yieldWeight || 0,
+        portionWeight: recipe.portionWeight || 250,
+        procedure: recipe.procedure
+      });
+    }
   };
 
   const handleCreateRecipe = () => {
@@ -2119,6 +2130,55 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   }
                 });
                 
+                // Aggiungi ingredienti base selezionati (acqua, sale, olio, lievito, malto)
+                const selectedIngredients = recipeData.selectedIngredients;
+                if (selectedIngredients) {
+                  // Acqua
+                  if (selectedIngredients.water && calcResult.closure.water > 0) {
+                    components.push({
+                      id: selectedIngredients.water,
+                      type: 'ingredient',
+                      quantity: calcResult.closure.water + (calcResult.preferment?.water || 0) + (calcResult.autolysis?.water || 0)
+                    });
+                  }
+                  
+                  // Sale
+                  if (selectedIngredients.salt && calcResult.closure.salt > 0) {
+                    components.push({
+                      id: selectedIngredients.salt,
+                      type: 'ingredient',
+                      quantity: calcResult.closure.salt
+                    });
+                  }
+                  
+                  // Olio
+                  if (selectedIngredients.oil && calcResult.closure.oil > 0) {
+                    components.push({
+                      id: selectedIngredients.oil,
+                      type: 'ingredient',
+                      quantity: calcResult.closure.oil
+                    });
+                  }
+                  
+                  // Lievito
+                  if (selectedIngredients.yeast && calcResult.closure.yeast > 0) {
+                    components.push({
+                      id: selectedIngredients.yeast,
+                      type: 'ingredient',
+                      quantity: calcResult.closure.yeast + (calcResult.preferment?.yeast || 0)
+                    });
+                  }
+                  
+                  // Malto
+                  if (selectedIngredients.malt && calcResult.closure.malt > 0) {
+                    components.push({
+                      id: selectedIngredients.malt,
+                      type: 'ingredient',
+                      quantity: calcResult.closure.malt
+                    });
+                  }
+                }
+                
                 // Aggiungi ingredienti aggiuntivi
                 if (calcResult.closure.additionalIngredients && calcResult.closure.additionalIngredients.length > 0) {
                   calcResult.closure.additionalIngredients.forEach(ing => {
@@ -2134,10 +2194,25 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   return;
                 }
                 
-                // Aggiungi sale, lievito, olio, malto come ingredienti se necessario
-                // Nota: questi potrebbero non essere ingredienti dell'economato, 
-                // quindi per ora li saltiamo. Se necessario, possono essere aggiunti come ingredienti aggiuntivi.
-                
+                // Helper per rimuovere campi undefined (Firebase non li accetta)
+                const removeUndefined = (obj: any): any => {
+                  if (obj === null || obj === undefined) return null;
+                  if (Array.isArray(obj)) return obj.map(removeUndefined);
+                  if (typeof obj === 'object') {
+                    const cleaned: any = {};
+                    for (const [key, value] of Object.entries(obj)) {
+                      if (value !== undefined) {
+                        cleaned[key] = removeUndefined(value);
+                      }
+                    }
+                    return cleaned;
+                  }
+                  return obj;
+                };
+
+                // Pulisci il risultato del calcolo dai valori undefined
+                const cleanedCalcResult = removeUndefined(calcResult);
+
                 // Crea SubRecipe con dati completi del calcolatore
                 const subRecipe: SubRecipe = {
                   id: editingId || Math.random().toString(36).substr(2, 9),
@@ -2146,26 +2221,30 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   components: components,
                   initialWeight: calcResult.totalWeight / 1000,
                   yieldWeight: calcResult.totalWeight / 1000,
-                  portionWeight: portionWeight,
+                  portionWeight: recipeData.portionWeight || 270, // Usa il valore dal calcolatore
                   // Salva i dati completi del calcolatore per poter rigenerare il PDF
-                  advancedCalculatorData: {
+                  advancedCalculatorData: removeUndefined({
                     hydration: recipeData.hydration,
-                    calculation: calcResult,
+                    calculation: cleanedCalcResult,
                     management: recipeData.management,
-                    preferment: recipeData.preferment
-                  }
+                    preferment: recipeData.preferment || null
+                  })
                 };
                 
                 try {
                   if (editingId && onUpdate) {
                     await onUpdate(subRecipe);
+                    setShowCalculator(false);
+                    setEditingId(null);
+                    alert('✅ Ricetta aggiornata con successo!');
                   } else {
                     await onAdd(subRecipe);
+                    // Mostra modal per chiedere FIFO e gestione come topping
+                    setSavedRecipe(subRecipe);
+                    setShowFifoModal(true);
+                    setShowCalculator(false);
+                    setEditingId(null);
                   }
-                  
-                  setShowCalculator(false);
-                  setEditingId(null);
-                  alert('✅ Ricetta salvata con successo!');
                 } catch (error) {
                   console.error('Errore nel salvataggio:', error);
                   alert(`❌ Errore nel salvataggio: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
@@ -2613,14 +2692,15 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   <Plus size={16} /> <span>Nuovo Ingrediente</span>
                 </button>
                 
-                <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">FARINE</p>
-                  {availableFlours
-                    .filter(flour => {
+                <div className="flex-1 overflow-y-auto space-y-4 scrollbar-hide">
+                  {(() => {
+                    // Filtra e raggruppa per categoria
+                    const filteredFlours = availableFlours.filter(flour => {
                       const searchLower = flourSelectSearch.toLowerCase();
                       const nameMatch = flour.name.toLowerCase().includes(searchLower);
+                      const categoryMatch = flour.category?.toLowerCase().includes(searchLower);
+                      
                       // Escludi farine già selezionate
-                      // Escludi farine già selezionate in altri contesti solo se non stiamo selezionando per quello stesso contesto
                       const alreadyInPref = showFlourSelectModal !== 'preferment' && prefFlourSelections.some(f => f.id === flour.id);
                       const alreadyInAutolyse = showFlourSelectModal !== 'autolyse' && autolyseFlourSelections.some(f => f.id === flour.id);
                       const alreadyInRemaining = showFlourSelectModal !== 'remaining' && (
@@ -2636,43 +2716,57 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                             ? remainingFlourSelections.some(f => f.id === flour.id)
                             : flourSelections.some(f => f.id === flour.id)
                         ));
-                      return nameMatch && !alreadyInPref && !alreadyInAutolyse && !alreadyInRemaining && !alreadyInCurrent;
-                    })
-                    .map(flour => (
-                      <button
-                        key={flour.id}
-                        onClick={() => {
-                          if (showFlourSelectModal === 'preferment') {
-                            // Le percentuali sono sulla percentuale del prefermento (es. 20% della farina totale)
-                            const isFirstFlour = prefFlourSelections.length === 0;
-                            const currentTotal = prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
-                            const availablePercentage = prefFlourPercentage - currentTotal;
-                            setPrefFlourSelections([...prefFlourSelections, { id: flour.id, percentage: isFirstFlour ? prefFlourPercentage : Math.max(0, availablePercentage) }]);
-                          } else if (showFlourSelectModal === 'autolyse') {
-                            // Le percentuali sono sulla percentuale dell'autolisi (es. 30% della farina totale)
-                            const isFirstFlour = autolyseFlourSelections.length === 0;
-                            const currentTotal = autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
-                            const availablePercentage = autolyseFlourPercentage - currentTotal;
-                            setAutolyseFlourSelections([...autolyseFlourSelections, { id: flour.id, percentage: isFirstFlour ? autolyseFlourPercentage : Math.max(0, availablePercentage) }]);
-                          } else if (showFlourSelectModal === 'remaining') {
-                            // Per le farine rimanenti, calcola la percentuale disponibile
-                            const currentTotal = remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
-                            const availablePercentage = Math.max(0, remainingFlourPercentage - currentTotal);
-                            setRemainingFlourSelections([...remainingFlourSelections, { id: flour.id, percentage: availablePercentage > 0 ? Math.min(100, availablePercentage) : 0 }]);
-                          }
-                          setShowFlourSelectModal(null);
-                          setFlourSelectSearch('');
-                        }}
-                        className="w-full p-4 rounded-2xl text-left bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95 transition-all"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-black text-sm text-black">{flour.name}</p>
-                            <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">€{flour.pricePerUnit.toFixed(2)}/kg</p>
-                          </div>
+                      return (nameMatch || categoryMatch) && !alreadyInPref && !alreadyInAutolyse && !alreadyInRemaining && !alreadyInCurrent;
+                    });
+
+                    // Raggruppa per categoria
+                    const groupedByCategory = filteredFlours.reduce((acc, flour) => {
+                      const category = flour.category || 'Altre';
+                      if (!acc[category]) acc[category] = [];
+                      acc[category].push(flour);
+                      return acc;
+                    }, {} as Record<string, typeof filteredFlours>);
+
+                    return Object.entries(groupedByCategory).map(([category, flours]) => (
+                      <div key={category}>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 mb-2">{category}</p>
+                        <div className="space-y-2">
+                          {flours.map(flour => (
+                            <button
+                              key={flour.id}
+                              onClick={() => {
+                                if (showFlourSelectModal === 'preferment') {
+                                  const isFirstFlour = prefFlourSelections.length === 0;
+                                  const currentTotal = prefFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                                  const availablePercentage = prefFlourPercentage - currentTotal;
+                                  setPrefFlourSelections([...prefFlourSelections, { id: flour.id, percentage: isFirstFlour ? prefFlourPercentage : Math.max(0, availablePercentage) }]);
+                                } else if (showFlourSelectModal === 'autolyse') {
+                                  const isFirstFlour = autolyseFlourSelections.length === 0;
+                                  const currentTotal = autolyseFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                                  const availablePercentage = autolyseFlourPercentage - currentTotal;
+                                  setAutolyseFlourSelections([...autolyseFlourSelections, { id: flour.id, percentage: isFirstFlour ? autolyseFlourPercentage : Math.max(0, availablePercentage) }]);
+                                } else if (showFlourSelectModal === 'remaining') {
+                                  const currentTotal = remainingFlourSelections.reduce((sum, f) => sum + f.percentage, 0);
+                                  const availablePercentage = Math.max(0, remainingFlourPercentage - currentTotal);
+                                  setRemainingFlourSelections([...remainingFlourSelections, { id: flour.id, percentage: availablePercentage > 0 ? Math.min(100, availablePercentage) : 0 }]);
+                                }
+                                setShowFlourSelectModal(null);
+                                setFlourSelectSearch('');
+                              }}
+                              className="w-full p-4 rounded-2xl text-left bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm active:scale-95 transition-all"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-black text-sm text-black">{flour.name}</p>
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">€{flour.pricePerUnit.toFixed(2)}/kg</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
                         </div>
-                      </button>
-                    ))}
+                      </div>
+                    ));
+                  })()}
                 </div>
               </>
             )}
@@ -2810,6 +2904,195 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal FIFO e gestione topping dopo salvataggio */}
+      {showFifoModal && savedRecipe && (
+        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6">
+            <div className="text-center">
+              <Check className="mx-auto text-green-500 mb-4" size={48} />
+              <h3 className="text-2xl font-black text-black mb-2">Impasto Creato con Successo!</h3>
+              <p className="text-sm text-gray-500 font-semibold">
+                Come vuoi gestire questo impasto?
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={savedRecipe.fifoLabel || false}
+                    onChange={(e) => setSavedRecipe({...savedRecipe, fifoLabel: e.target.checked})}
+                    className="w-5 h-5 rounded"
+                  />
+                  <div>
+                    <span className="text-sm font-black text-black block">Crea Etichetta FIFO</span>
+                    <span className="text-xs text-gray-400 font-semibold">Abilita la creazione di etichette FIFO per questo impasto</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
+                <p className="text-xs font-semibold text-blue-800 mb-2">
+                  💡 <strong>Gestione come Topping:</strong> L'impasto verrà automaticamente disponibile come topping nella creazione menu, così potrai includerlo come costo nella pizza.
+                </p>
+                <p className="text-xs text-gray-600 font-bold">
+                  L'impasto porzionato ({savedRecipe.portionWeight}g) sarà disponibile come componente nelle ricette del menu.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => {
+                  setShowFifoModal(false);
+                  setSavedRecipe(null);
+                }}
+                className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black"
+              >
+                Chiudi
+              </button>
+              <button
+                onClick={async () => {
+                  if (savedRecipe && onUpdate) {
+                    // Aggiorna la ricetta con FIFO se necessario
+                    await onUpdate(savedRecipe);
+                    setShowFifoModal(false);
+                    setSavedRecipe(null);
+                    alert('✅ Impasto configurato! Ora è disponibile come topping nel menu.');
+                  } else {
+                    setShowFifoModal(false);
+                    setSavedRecipe(null);
+                  }
+                }}
+                className="flex-1 bg-black text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+              >
+                Conferma
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vista visualizzazione/stampa ricetta */}
+      {viewingRecipe && (
+        <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300">
+          <div className="w-full max-w-2xl bg-white rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-500 overflow-y-auto max-h-[95vh] pb-12 scrollbar-hide relative">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8" />
+            
+            <header className="flex justify-between items-center mb-8">
+              <h3 className="text-3xl font-black tracking-tighter">{viewingRecipe.name}</h3>
+              <div className="flex items-center gap-2">
+                {viewingRecipe.advancedCalculatorData && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { generateRecipePDF } = await import('../../utils/pdfGenerator');
+                        const userName = userData?.firstName && userData?.lastName 
+                          ? `${userData.firstName} ${userData.lastName}`
+                          : undefined;
+                        
+                        generateRecipePDF({
+                          name: viewingRecipe.name,
+                          category: viewingRecipe.category,
+                          hydration: viewingRecipe.advancedCalculatorData.hydration,
+                          result: viewingRecipe.advancedCalculatorData.calculation,
+                          ingredients: ingredients,
+                          portionWeight: viewingRecipe.portionWeight,
+                          preferment: viewingRecipe.advancedCalculatorData.preferment,
+                          userName: userName,
+                          management: viewingRecipe.advancedCalculatorData.management
+                        });
+                      } catch (error) {
+                        console.error('Errore generazione PDF:', error);
+                        alert('Errore nella generazione del PDF.');
+                      }
+                    }}
+                    className="bg-purple-600 text-white p-3 rounded-2xl shadow-lg active:scale-90 transition-transform"
+                    title="Stampa PDF"
+                  >
+                    <Printer size={20} />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setViewingRecipe(null);
+                    // Se vuole modificare, apri il form
+                    if (onUpdate) {
+                      setEditingId(viewingRecipe.id);
+                      setShowCalculator(true);
+                    }
+                  }}
+                  className="bg-gray-100 p-2 rounded-full text-gray-400"
+                >
+                  <X size={24}/>
+                </button>
+              </div>
+            </header>
+
+            <div className="space-y-6">
+              {viewingRecipe.advancedCalculatorData && viewingRecipe.advancedCalculatorData.calculation && (
+                <>
+                  <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-6 rounded-[2.5rem] border border-blue-100">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Idratazione</p>
+                        <p className="text-3xl font-black text-black">{viewingRecipe.advancedCalculatorData.hydration}%</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Peso Porzione</p>
+                        <p className="text-3xl font-black text-black">{viewingRecipe.portionWeight}g</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Usa RecipeSummary per mantenere lo stesso layout di stampa */}
+                  <RecipeSummary
+                    result={viewingRecipe.advancedCalculatorData.calculation}
+                    ingredients={ingredients}
+                    portionWeight={viewingRecipe.portionWeight}
+                    multiplier={1}
+                  />
+                </>
+              )}
+
+              {!viewingRecipe.advancedCalculatorData && (
+                <div className="bg-gray-50 rounded-2xl p-6">
+                  <p className="text-sm font-bold text-gray-400 text-center">Ricetta creata manualmente</p>
+                  {viewingRecipe.procedure && (
+                    <div className="mt-4">
+                      <h4 className="font-black text-sm text-black mb-2 uppercase">Procedura</h4>
+                      <p className="text-sm font-bold text-gray-700 whitespace-pre-wrap">{viewingRecipe.procedure}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setViewingRecipe(null);
+                    if (onUpdate) {
+                      setEditingId(viewingRecipe.id);
+                      setShowCalculator(true);
+                    }
+                  }}
+                  className="flex-1 bg-black text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+                >
+                  Modifica
+                </button>
+                <button
+                  onClick={() => setViewingRecipe(null)}
+                  className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black"
+                >
+                  Chiudi
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

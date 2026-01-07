@@ -22,7 +22,7 @@ export interface PrefermentResult {
   flour: number;
   water: number;
   yeast: number;
-  salt?: number;
+  salt: number; // Sempre presente (0 se non usato)
   flourBreakdown: { flourId: string; amount: number }[];
 }
 
@@ -30,7 +30,7 @@ export interface PrefermentResult {
 export interface AutolysisResult {
   flour: number;
   water: number;
-  salt?: number;
+  salt: number; // Sempre presente (0 se non usato)
   flourBreakdown: { flourId: string; amount: number }[];
 }
 
@@ -83,11 +83,9 @@ export function calculatePreferment(
   // Calcola lievito
   const yeast = (prefermentFlour * preferment.yeastPercentage) / 100;
   
-  // Calcola sale se presente
-  const salt = preferment.saltPercentage > 0 
-    ? (prefermentFlour * preferment.saltPercentage) / 100 
-    : undefined;
-  
+  // Calcola sale (0 se non presente - Firebase non accetta undefined)
+  const salt = (prefermentFlour * preferment.saltPercentage) / 100;
+
   return {
     flour: prefermentFlour,
     water,
@@ -99,16 +97,17 @@ export function calculatePreferment(
 
 /**
  * Calcola l'autolisi
+ * NOTA: autolysisFlourPercentage è ora sulla farina TOTALE, non sulla farina rimanente
  */
 export function calculateAutolysis(
   autolysisFlourPercentage: number,
-  remainingFlourAfterPreferment: number,
+  totalFlour: number, // Farina totale (non più rimanente!)
   autolysisHydration: number,
   flourSelections: FlourSelection[],
   autolysisSaltPercentage: number = 0
 ): AutolysisResult {
-  // Farina per autolisi (percentuale sulla farina rimanente dopo pre-fermento)
-  const autolysisFlour = (remainingFlourAfterPreferment * autolysisFlourPercentage) / 100;
+  // Farina per autolisi (percentuale sulla farina TOTALE)
+  const autolysisFlour = (totalFlour * autolysisFlourPercentage) / 100;
   
   // Calcola breakdown delle farine
   const flourBreakdown = flourSelections.map(flour => ({
@@ -119,11 +118,9 @@ export function calculateAutolysis(
   // Calcola acqua
   const water = (autolysisFlour * autolysisHydration) / 100;
   
-  // Calcola sale se presente
-  const salt = autolysisSaltPercentage > 0
-    ? (autolysisFlour * autolysisSaltPercentage) / 100
-    : undefined;
-  
+  // Calcola sale (0 se non presente - Firebase non accetta undefined)
+  const salt = (autolysisFlour * autolysisSaltPercentage) / 100;
+
   return {
     flour: autolysisFlour,
     water,
@@ -285,13 +282,11 @@ export function validateDoughConfiguration(
     }
   }
   
-  // Valida somma pre-fermento + autolisi
-  if (usePreferment && useAutolysis) {
-    const totalPercentage = prefermentFlourPercentage + 
-      (autolysisFlourPercentage * (100 - prefermentFlourPercentage) / 100);
-    if (totalPercentage > 100) {
-      errors.push('La somma delle percentuali di pre-fermento e autolisi supera il 100%');
-    }
+  // Valida somma pre-fermento + autolisi (entrambe su farina totale)
+  const totalFlourUsed = (usePreferment ? prefermentFlourPercentage : 0) +
+                         (useAutolysis ? autolysisFlourPercentage : 0);
+  if (totalFlourUsed > 100) {
+    errors.push(`La somma delle percentuali (${totalFlourUsed.toFixed(1)}%) supera il 100% della farina totale`);
   }
   
   // Valida percentuali farine chiusura (solo se ci sono farine selezionate)

@@ -115,15 +115,14 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
       prefermentYeast = prefermentResult.yeast;
     }
     
-    // 2. Calcola autolisi (sulla farina rimanente)
+    // 2. Calcola autolisi (percentuale sulla farina TOTALE, non sulla rimanente)
     let autolysisFlour = 0;
     let autolysisWater = 0;
-    const remainingFlourAfterPreferment = flourTotal - prefermentFlour;
-    
-    if (useAutolysis && remainingFlourAfterPreferment > 0) {
+
+    if (useAutolysis && autolysisFlourPercentage > 0) {
       autolysisResult = calculateAutolysis(
         autolysisFlourPercentage,
-        remainingFlourAfterPreferment,
+        flourTotal, // Usa farina totale, non rimanente!
         autolysisHydration,
         autolysisFlourSelections,
         autolysisSaltPercentage

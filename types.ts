@@ -97,6 +97,7 @@ export interface FifoLabel {
   status: 'active' | 'consumed' | 'expired';
   consumedAt?: Date | any;
   consumedBy?: string; // userId + nome operatore
+  cassetteInfo?: string; // Info cassetta per impasti (es: "Cassetta 1/3 - 12 pz")
 }
 
 export interface StockMovement {

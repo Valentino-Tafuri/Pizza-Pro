@@ -714,6 +714,24 @@ Header richiesti:
           
           return (
             <div className="space-y-4">
+              {/* Costo Totale Pizza */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-[2.5rem] border border-green-100">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">Costo Totale Pizza</span>
+                  <span className="text-[10px] font-black uppercase text-green-600 bg-green-100 px-3 py-1 rounded-full">
+                    Materie Prime
+                  </span>
+                </div>
+                <div className="flex items-baseline space-x-2">
+                  <span className="text-4xl font-black text-green-700 tracking-tight">
+                    €{totalCost.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-[9px] text-gray-400 font-bold mt-2">
+                  Costo totale di tutti gli ingredienti e preparazioni utilizzati
+                </p>
+              </div>
+
               {/* Prezzo Consigliato Asset Cost */}
               <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-[2.5rem] border border-purple-100">
                 <div className="flex items-center justify-between mb-3">
