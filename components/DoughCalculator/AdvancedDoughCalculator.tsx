@@ -445,7 +445,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
           <IOSStepper
             value={totalHydration}
             onChange={setTotalHydration}
-            min={15}
+            min={10}
             max={90}
             step={0.5}
             unit="%"
@@ -806,7 +806,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
               value={oilPercentage}
               onChange={setOilPercentage}
               min={0}
-              max={12}
+              max={50}
               step={0.5}
               unit="%"
               label="Olio"
