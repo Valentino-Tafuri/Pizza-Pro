@@ -239,120 +239,162 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
     const createdAt = labelToPrint.createdAt?.toDate?.() || new Date(labelToPrint.createdAt);
     const expiryDateLabel = labelToPrint.expiryDate?.toDate?.() || new Date(labelToPrint.expiryDate);
 
-    // Genera HTML con UNA SOLA etichetta - l'utente imposterà le copie nella finestra di stampa
+    // Genera HTML per etichette termiche 62mm x 40mm (Brother e compatibili)
     const printContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Etichetta FIFO - ${labelToPrint.preparationName}</title>
         <style>
-          @page {
-            size: 80mm 40mm;
+          * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          @page {
+            size: 62mm 40mm;
+            margin: 0;
+          }
+          @media print {
+            html, body {
+              width: 62mm;
+              height: 40mm;
+              margin: 0;
+              padding: 0;
+            }
+            .print-info {
+              display: none !important;
+            }
           }
           body {
             margin: 0;
             padding: 0;
-            font-family: sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
-          .label-page {
-            width: 80mm;
+          .label-container {
+            width: 62mm;
             height: 40mm;
-            box-sizing: border-box;
-            border: 2px solid black;
             padding: 2mm;
             display: flex;
+            flex-direction: row;
             gap: 2mm;
-            font-size: 8px;
+            background: white;
+          }
+          .qr-section {
+            flex-shrink: 0;
+            width: 32mm;
+            height: 36mm;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
           }
           .qr-code {
-            flex-shrink: 0;
-            width: 20mm;
-            height: 20mm;
+            width: 28mm;
+            height: 28mm;
           }
           .qr-code img {
             width: 100%;
             height: 100%;
             object-fit: contain;
           }
-          .label-info {
-            flex-grow: 1;
+          .barcode-text {
+            font-size: 6pt;
+            font-family: monospace;
+            text-align: center;
+            margin-top: 1mm;
+            letter-spacing: 0.5px;
+          }
+          .info-section {
+            flex: 1;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            padding: 1mm 0;
+            min-width: 0;
           }
-          .label-info h4 {
+          .prep-name {
             font-weight: bold;
-            margin-bottom: 1mm;
-            font-size: 9px;
+            font-size: 9pt;
             text-transform: uppercase;
+            line-height: 1.1;
+            margin-bottom: 1mm;
+            word-wrap: break-word;
+            overflow: hidden;
           }
-          .label-info .expiry {
-            background-color: #fee2e2;
-            border: 1px solid #fca5a5;
-            border-radius: 2px;
-            padding: 1mm 2mm;
+          .cassette-info {
+            font-size: 7pt;
+            font-weight: bold;
+            padding: 1mm;
+            border: 1px solid #000;
+            margin-bottom: 1mm;
+            text-align: center;
+          }
+          .date-row {
+            font-size: 6pt;
+            color: #444;
             margin-bottom: 1mm;
           }
-          .label-info .expiry p {
-            font-weight: bold;
-            color: #b91c1c;
-            font-size: 8px;
-            margin: 0;
-          }
-          .label-info .cassette-info {
-            background-color: #fffbeb;
-            border: 1px solid #fcd34d;
-            border-radius: 2px;
-            padding: 0.5mm 2mm;
+          .expiry-box {
+            border: 2px solid #000;
+            padding: 1.5mm 2mm;
+            text-align: center;
             margin-bottom: 1mm;
           }
-          .label-info .cassette-info p {
+          .expiry-label {
+            font-size: 6pt;
             font-weight: bold;
-            color: #b45309;
-            font-size: 7px;
-            margin: 0;
           }
-          .label-info .date-created, .label-info .id-text {
-            font-size: 7px;
-            color: #6b7280;
-            margin: 0;
+          .expiry-date {
+            font-size: 11pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+          }
+          .label-id {
+            font-size: 5pt;
+            color: #666;
+            font-family: monospace;
           }
           .print-info {
-            display: none;
-          }
-          @media screen {
-            .print-info {
-              display: block;
-              margin-top: 10mm;
-              padding: 4mm;
-              background: #f0f9ff;
-              border: 1px solid #0ea5e9;
-              border-radius: 4px;
-              font-size: 12px;
-              color: #0369a1;
-            }
+            margin-top: 10mm;
+            padding: 4mm;
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #0369a1;
           }
         </style>
       </head>
       <body>
-        <div class="label-page">
-          <div class="qr-code">
-            <img src="${labelToPrint.qrCode}" alt="QR Code" />
+        <div class="label-container">
+          <div class="qr-section">
+            <div class="qr-code">
+              <img src="${labelToPrint.qrCode}" alt="QR Code" />
+            </div>
+            <div class="barcode-text">${labelToPrint.barcode}</div>
           </div>
-          <div class="label-info">
+          <div class="info-section">
             <div>
-              <h4>${labelToPrint.preparationName}</h4>
-              ${labelToPrint.cassetteInfo ? `<div class="cassette-info"><p>${labelToPrint.cassetteInfo}</p></div>` : ''}
-              <p class="date-created">Creato: ${createdAt.toLocaleDateString('it-IT')}</p>
-              <div class="expiry"><p>SCADENZA: ${expiryDateLabel.toLocaleDateString('it-IT')}</p></div>
-              <p class="id-text">ID: ${labelToPrint.id.slice(-12)}</p>
+              <div class="prep-name">${labelToPrint.preparationName}</div>
+              ${labelToPrint.cassetteInfo ? `<div class="cassette-info">${labelToPrint.cassetteInfo}</div>` : ''}
+              <div class="date-row">Prod: ${createdAt.toLocaleDateString('it-IT')}</div>
+            </div>
+            <div>
+              <div class="expiry-box">
+                <div class="expiry-label">SCADENZA</div>
+                <div class="expiry-date">${expiryDateLabel.toLocaleDateString('it-IT')}</div>
+              </div>
+              <div class="label-id">ID: ${labelToPrint.id.slice(-8)}</div>
             </div>
           </div>
         </div>
         <div class="print-info">
           <strong>📋 Etichette necessarie: ${labelCount}</strong><br>
-          Imposta il numero di copie nelle impostazioni di stampa del sistema.
+          Formato: 62mm x 40mm (Brother/stampanti termiche)<br>
+          Imposta il numero di copie nelle impostazioni di stampa.
         </div>
       </body>
       </html>
@@ -660,61 +702,67 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
             </div>
           </div>
 
-          {/* Print Area - Mostra una singola etichetta, ripetuta N volte per la stampa */}
+          {/* Print Area - Anteprima formato 62x40mm */}
           <div className="print-area">
-            {/* Anteprima schermo: mostra una sola etichetta */}
-            <div className="screen-preview mb-6">
+            {/* Anteprima schermo: formato 62mm x 40mm */}
+            <div className="screen-preview mb-6 flex justify-center">
               <div
-                className="label-print border-2 border-black p-4 rounded-xl mx-auto"
-                style={{ width: '80mm', height: '40mm' }}
+                className="label-preview bg-white border-2 border-gray-800 flex gap-2"
+                style={{ width: '234px', height: '151px', padding: '8px' }} // 62mm x 40mm @ 96dpi ~= 234x151px
               >
                 {generatedLabels[0] && (
-                  <div className="flex gap-3 h-full">
-                    {/* QR Code */}
-                    <div className="flex-shrink-0">
+                  <>
+                    {/* QR Code Section */}
+                    <div className="flex-shrink-0 flex flex-col items-center justify-center" style={{ width: '120px' }}>
                       <img
                         src={generatedLabels[0].qrCode}
                         alt="QR Code"
                         className="w-24 h-24"
                       />
+                      <p className="text-[8px] font-mono text-gray-600 mt-1">
+                        {generatedLabels[0].barcode}
+                      </p>
                     </div>
-                    {/* Info */}
-                    <div className="flex-1 flex flex-col justify-between text-xs">
+                    {/* Info Section */}
+                    <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
                       <div>
-                        <h4 className="font-black text-black mb-1 text-[10px] uppercase">
+                        <h4 className="font-black text-black text-[10px] uppercase leading-tight mb-1 break-words">
                           {generatedLabels[0].preparationName}
                         </h4>
-                        {/* Info Cassetta per Impasti */}
                         {generatedLabels[0].cassetteInfo && (
-                          <div className="bg-amber-100 border border-amber-300 rounded px-2 py-0.5 mb-1">
-                            <p className="text-[9px] font-black text-amber-800">
+                          <div className="border border-black px-1 py-0.5 mb-1 text-center">
+                            <p className="text-[8px] font-bold">
                               {generatedLabels[0].cassetteInfo}
                             </p>
                           </div>
                         )}
-                        <p className="text-[8px] text-gray-600 mb-1">
-                          Creato: {(generatedLabels[0].createdAt?.toDate?.() || new Date(generatedLabels[0].createdAt)).toLocaleDateString('it-IT')}
+                        <p className="text-[7px] text-gray-500">
+                          Prod: {(generatedLabels[0].createdAt?.toDate?.() || new Date(generatedLabels[0].createdAt)).toLocaleDateString('it-IT')}
                         </p>
-                        <div className="bg-red-100 border border-red-300 rounded px-2 py-1 mb-1">
-                          <p className="text-[8px] font-black text-red-700">
-                            SCADENZA: {(generatedLabels[0].expiryDate?.toDate?.() || new Date(generatedLabels[0].expiryDate)).toLocaleDateString('it-IT')}
+                      </div>
+                      <div>
+                        <div className="border-2 border-black px-1 py-1 text-center mb-1">
+                          <p className="text-[7px] font-bold">SCADENZA</p>
+                          <p className="text-[11px] font-black">
+                            {(generatedLabels[0].expiryDate?.toDate?.() || new Date(generatedLabels[0].expiryDate)).toLocaleDateString('it-IT')}
                           </p>
                         </div>
-                        <p className="text-[7px] text-gray-400">
-                          ID: {generatedLabels[0].id.slice(-12)}
+                        <p className="text-[6px] text-gray-400 font-mono">
+                          ID: {generatedLabels[0].id.slice(-8)}
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
 
-            {/* Nota: La stampa viene gestita dalla funzione handlePrint che apre una nuova finestra */}
+            {/* Info formato stampa */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
               <p className="text-xs font-semibold text-blue-800">
-                ℹ️ Etichette necessarie: <strong>{labelCount}</strong><br/>
-                La stampa aprirà una finestra con <strong>1 etichetta</strong>. Imposta il numero di copie ({labelCount}) nelle impostazioni di stampa del sistema operativo.
+                🏷️ Formato etichetta: <strong>62mm x 40mm</strong> (Brother / stampanti termiche)<br/>
+                📋 Etichette necessarie: <strong>{labelCount}</strong><br/>
+                Imposta il numero di copie nelle impostazioni di stampa.
               </p>
             </div>
           </div>
