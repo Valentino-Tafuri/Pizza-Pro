@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, Edit2, Plus, Trash2, X, AlertTriangle, PlusCircle, Check, Loader2, Tag, Truck, Calendar, Save, Phone, Upload, FileText } from 'lucide-react';
+import { Search, Edit2, Plus, Trash2, X, AlertTriangle, PlusCircle, Check, Loader2, Tag, Truck, Calendar, Save, Phone, Upload, FileText, Download } from 'lucide-react';
 import { Ingredient, Unit, Supplier } from '../../types';
 import { normalizeText } from '../../utils/textUtils';
 
@@ -58,7 +58,7 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
 
   const handleSave = () => {
     if (!form.name || !form.category || form.pricePerUnit === undefined) return;
-    const payload = { ...form, id: editingId || '' } as Ingredient;
+    const payload = { ...form, name: normalizeText(form.name), id: editingId || '' } as Ingredient;
     if (editingId) onUpdate(payload);
     else onAdd(payload);
     handleClose();
@@ -187,6 +187,46 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     alert(`✅ Import completato! ${csvData.length} ingredient${csvData.length > 1 ? 'i' : 'e'} importat${csvData.length > 1 ? 'i' : 'o'}.`);
     setCsvImportMode(null);
     setCsvData([]);
+  };
+
+  // Export CSV function
+  const handleExportCSV = () => {
+    if (ingredients.length === 0) {
+      alert('Nessun ingrediente da esportare');
+      return;
+    }
+
+    // Header CSV
+    const headers = ['nome', 'unita', 'prezzo_per_unita', 'categoria', 'fornitore'];
+
+    // Genera righe CSV
+    const rows = ingredients.map(ing => {
+      const supplierName = suppliers.find(s => s.id === ing.supplierId)?.name || '';
+      return [
+        `"${ing.name}"`,
+        ing.unit,
+        ing.pricePerUnit.toFixed(2),
+        `"${ing.category}"`,
+        `"${supplierName}"`
+      ].join(',');
+    });
+
+    // Combina header e righe
+    const csvContent = [headers.join(','), ...rows].join('\n');
+
+    // Crea e scarica il file
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const date = new Date().toISOString().split('T')[0];
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', `economato_export_${date}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
 
@@ -492,6 +532,9 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input type="text" placeholder="Cerca..." className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+            <button onClick={handleExportCSV} className="bg-green-600 text-white p-2 rounded-xl shadow-sm active:scale-90 transition-transform" title="Esporta CSV">
+              <Download size={16} />
+            </button>
             <button onClick={() => setCsvImportMode('upload')} className="bg-blue-600 text-white p-2 rounded-xl shadow-sm active:scale-90 transition-transform" title="Importa CSV">
               <Upload size={16} />
             </button>

@@ -20,6 +20,59 @@ interface LabCalculatorViewProps {
   userData?: { firstName?: string; lastName?: string }; // Nome utente per PDF
 }
 
+// Componente per input tempo/temperatura/procedura - Fuori dal componente principale per evitare remount
+const PhaseInputs: React.FC<{
+  prefix?: string;
+  time: string;
+  temp: string;
+  procedure: string;
+  onTimeChange: (value: string) => void;
+  onTempChange: (value: string) => void;
+  onProcedureChange: (value: string) => void;
+  timeUnit?: string;
+  timePlaceholder?: string;
+}> = ({ time, temp, procedure, onTimeChange, onTempChange, onProcedureChange, timeUnit = 'ore', timePlaceholder = 'es: 1-2' }) => (
+  <div className="space-y-3">
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+          <Clock size={12} /> Tempo ({timeUnit})
+        </label>
+        <input
+          type="text"
+          value={time}
+          onChange={(e) => onTimeChange(e.target.value)}
+          placeholder={timePlaceholder}
+          className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+          <Thermometer size={12} /> Temperatura
+        </label>
+        <input
+          type="text"
+          value={temp}
+          onChange={(e) => onTempChange(e.target.value)}
+          placeholder="es: T.A."
+          className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
+        />
+      </div>
+    </div>
+    <div>
+      <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
+        <FileText size={12} /> Procedura
+      </label>
+      <textarea
+        value={procedure}
+        onChange={(e) => onProcedureChange(e.target.value)}
+        rows={2}
+        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium resize-none"
+      />
+    </div>
+  </div>
+);
+
 interface RecipeResult {
   prefFlour: number;
   prefWater: number;
@@ -94,13 +147,13 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     prefermentTemp: '18-20°C',
     prefermentProcedure: 'Mescolare farina, acqua e lievito. Lasciar fermentare coperto.',
     // Impasto/Mixing
-    mixingTime: '15-20',
-    mixingTemp: 'T.A.',
-    mixingProcedure: 'Impastare fino a incordatura. Aggiungere sale a metà impasto.',
+    mixingTime: '11',
+    mixingTemp: '24',
+    mixingProcedure: 'Inserire il lievito. Aggiungere acqua per raggiungere il 65%. Far girare per 5 min in 1°Vel. Aggiungere il sale e far girare 3 min. Aggiungere l\'acqua restante in 2°Vel per 3 min. Mettere in vasche 60x40.',
     // Puntata
-    puntataTime: '30-60',
-    puntataTemp: 'T.A.',
-    puntataProcedure: 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.',
+    puntataTime: '24 ore 4°C / 15-20 min 24°C',
+    puntataTemp: '4°C / 24°C',
+    puntataProcedure: 'Inserire in contenitore leggermente oliato e far puntare a 24 ore 4°C / 15-20 min 24°C',
     // Appretto vs Pre-shape
     usePreShape: false,
     // Appretto
@@ -744,7 +797,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
 
     const subRecipe: SubRecipe = {
       id: editingId || Math.random().toString(36).substr(2, 9),
-      name: recipeName,
+      name: normalizeText(recipeName),
       category: recipeCategory,
       components: components,
       initialWeight: calculateRecipe.totalWeight / 1000,
@@ -773,7 +826,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     }
     if (!onAddIngredient) return;
     
-    const newId = await onAddIngredient(wizardIng as Ingredient);
+    const ingredientToSave = { ...wizardIng, name: normalizeText(wizardIng.name || '') } as Ingredient;
+    const newId = await onAddIngredient(ingredientToSave);
     if (newId) {
       // Se la farina è stata aggiunta, aggiungila alle selezioni se siamo nel calcolatore
       if (wizardIng.name.toLowerCase().includes('farina') || wizardIng.category.toLowerCase().includes('farina') || wizardIng.category.toLowerCase().includes('farine')) {
@@ -964,48 +1018,6 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
       </div>
     );
 
-    // Componente per input tempo/temperatura/procedura
-    const PhaseInputs = ({ prefix, time, temp, procedure, onTimeChange, onTempChange, onProcedureChange, timeUnit = 'ore', timePlaceholder = 'es: 1-2' }: any) => (
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
-              <Clock size={12} /> Tempo ({timeUnit})
-            </label>
-            <input
-              type="text"
-              value={time}
-              onChange={(e) => onTimeChange(e.target.value)}
-              placeholder={timePlaceholder}
-              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
-              <Thermometer size={12} /> Temperatura
-            </label>
-            <input
-              type="text"
-              value={temp}
-              onChange={(e) => onTempChange(e.target.value)}
-              placeholder="es: T.A."
-              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
-            <FileText size={12} /> Procedura
-          </label>
-          <textarea
-            value={procedure}
-            onChange={(e) => onProcedureChange(e.target.value)}
-            rows={2}
-            className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium resize-none"
-          />
-        </div>
-      </div>
-    );
 
     return (
       <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden">
@@ -3012,7 +3024,8 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                         return;
                       }
                       if (onAddIngredient) {
-                        const id = await onAddIngredient(newIngredientForm as Ingredient);
+                        const ingredientToSave = { ...newIngredientForm, name: normalizeText(newIngredientForm.name || '') } as Ingredient;
+                        const id = await onAddIngredient(ingredientToSave);
                         if (id) {
                           setForm({...form, components: [...(form.components || []), { id, type: 'ingredient', quantity: 100 }]});
                           setShowNewIngredientForm(false);

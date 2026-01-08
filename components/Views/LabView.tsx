@@ -8,7 +8,7 @@ import {
 import { SubRecipe, Ingredient, ComponentUsage, Unit, Supplier } from '../../types';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
 import { GoogleGenAI, Type } from "@google/genai";
-import { normalizeText } from '../../utils/textUtils';
+import { normalizeText, isLabCategory } from '../../utils/textUtils';
 
 interface LabViewProps {
   subRecipes: SubRecipe[];
@@ -75,11 +75,10 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
   }, [ingredients]);
 
   const filteredSubRecipes = useMemo(() => {
-    // Escludi le ricette del laboratorio (Pizza, Pane, Dolci)
-    const labCategories = ['Pizza', 'Pane', 'Dolci'];
+    // Escludi le ricette del laboratorio (mostrate solo in LabCalculatorView)
     return subRecipes.filter(s => {
       // Escludi ricette del laboratorio
-      if (labCategories.includes(s.category)) return false;
+      if (isLabCategory(s.category)) return false;
       
       const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory ? s.category === selectedCategory : true;
@@ -234,7 +233,8 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
 
   const saveWizardIngredient = async () => {
     if (!wizardIng.name || !wizardIng.pricePerUnit || !wizardIng.category) return;
-    const newId = await onAddIngredient(wizardIng as Ingredient);
+    const ingredientToSave = { ...wizardIng, name: normalizeText(wizardIng.name || '') } as Ingredient;
+    const newId = await onAddIngredient(ingredientToSave);
     if (newId) {
       const currentMissing = missingComps[currentMissingIdx];
       setForm(prev => ({
@@ -386,20 +386,22 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
         <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8" />
         
         <header className="flex justify-between items-center mb-8">
-          <h3 className="text-3xl font-black tracking-tighter">{isEdit ? 'Modifica Topping' : 'Riepilogo Topping'}</h3>
+          <h3 className="text-3xl font-black tracking-tighter">{isEdit ? 'Modifica Topping' : 'Nuovo Topping'}</h3>
           <button onClick={() => { setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false); }} className="bg-gray-100 p-2 rounded-full text-gray-400"><X size={24}/></button>
         </header>
         
         <div className="space-y-6">
-          {!isEdit && (
-          <div className="p-6 bg-blue-50 rounded-[2.5rem] border border-blue-100">
-             <p className="text-[10px] font-black uppercase text-blue-400 mb-1">Nome Preparazione</p>
-             <p className="text-3xl font-black text-black tracking-tight">{form.name}</p>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Preparazione</label>
+            <input
+              type="text"
+              className="w-full bg-gray-50 border-none rounded-2xl p-5 text-2xl font-black"
+              value={form.name || ''}
+              onChange={e => setForm({...form, name: e.target.value})}
+              onBlur={e => setForm({...form, name: normalizeText(e.target.value)})}
+              placeholder="Nome Preparazione"
+            />
           </div>
-        )}
-        {isEdit && (
-          <input type="text" className="w-full bg-gray-50 border-none rounded-2xl p-5 text-2xl font-black" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} onBlur={e => setForm({...form, name: normalizeText(e.target.value)})} placeholder="Nome Preparazione" />
-        )}
         
         <div className="space-y-2">
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Categoria Ricetta</label>
@@ -604,7 +606,7 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
 
         <button 
           onClick={() => {
-            const payload = { ...form, id: editingId || Math.random().toString(36).substr(2,9) } as SubRecipe;
+            const payload = { ...form, name: normalizeText(form.name || ''), id: editingId || Math.random().toString(36).substr(2,9) } as SubRecipe;
             if (editingId) onUpdate(payload); else onAdd(payload);
             setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false);
           }} 
@@ -785,7 +787,8 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
                         alert("Compila tutti i campi obbligatori");
                         return;
                       }
-                      const newId = await onAddIngredient(newIngredientForm as Ingredient);
+                      const ingredientToSave = { ...newIngredientForm, name: normalizeText(newIngredientForm.name || '') } as Ingredient;
+                      const newId = await onAddIngredient(ingredientToSave);
                       if (newId) {
                         setForm({
                           ...form,
@@ -844,7 +847,11 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
               
               {/* Semilavorati */}
               {subRecipes
-                .filter(sub => sub.name.toLowerCase().includes(addIngredientSearch.toLowerCase()))
+                .filter(sub => {
+                  // Escludi ricette del laboratorio (non devono essere componenti di altri topping)
+                  if (isLabCategory(sub.category)) return false;
+                  return sub.name.toLowerCase().includes(addIngredientSearch.toLowerCase());
+                })
                 .map(sub => {
                   const alreadyAdded = form.components?.some(c => c.id === sub.id && c.type === 'subrecipe');
                   return (
@@ -881,7 +888,7 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
                 })}
               
               {ingredients.filter(ing => ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase())).length === 0 &&
-               subRecipes.filter(sub => sub.name.toLowerCase().includes(addIngredientSearch.toLowerCase())).length === 0 && (
+               subRecipes.filter(sub => !isLabCategory(sub.category) && sub.name.toLowerCase().includes(addIngredientSearch.toLowerCase())).length === 0 && (
                 <div className="text-center py-8 text-gray-400">
                   <p className="text-sm font-bold">Nessun risultato trovato</p>
                 </div>

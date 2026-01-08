@@ -312,20 +312,56 @@ export function generateRecipePDF(data: RecipePDFData): void {
     ]);
   }
 
-  // Impasto (chiusura)
+  // Impasto (chiusura) - Genera procedura dinamica in base ai componenti
   const mixMgmt = mgmt?.mixing;
-  let defaultMixProcedure = 'Versare l\'acqua nella macchina con sale e lievito. Aggiungere la farina a pioggia. Impastare fino a incordatura.';
-  if (result.closure.oil > 0) {
-    defaultMixProcedure += ' Aggiungere l\'olio verso la fine.';
+  let defaultMixProcedure = '';
+  const steps: string[] = [];
+  
+  // Verifica se ci sono prefermento, autolisi, malto, olio
+  const hasPreferment = result.preferment && preferment;
+  const hasAutolysis = result.autolysis;
+  // Controlla se malto è presente con almeno 0.1% sulla farina totale
+  // Se la farina totale è 1000g, 0.1% = 1g
+  const totalFlourForMalt = (result.preferment?.flour || 0) + 
+                            (result.autolysis?.flour || 0) + 
+                            (result.closure.flour || 0);
+  const maltPercentage = totalFlourForMalt > 0 && result.closure.malt 
+    ? (result.closure.malt / totalFlourForMalt) * 100 
+    : 0;
+  const hasMalt = maltPercentage >= 0.1; // minimo 0,1%
+  const hasOil = result.closure.oil && result.closure.oil > 0;
+  
+  if (hasPreferment) {
+    steps.push('Inserire la biga');
   }
-  if (result.closure.malt > 0) {
-    defaultMixProcedure += ' Aggiungere il malto insieme alla farina.';
+  
+  if (hasAutolysis) {
+    steps.push('Inserire l\'autolisi');
   }
+  
+  steps.push('Inserire il lievito');
+  
+  if (hasMalt) {
+    steps.push('Inserire il malto');
+  }
+  
+  steps.push('Aggiungere acqua per raggiungere il 65%');
+  steps.push('Far girare per 5 min in 1°Vel');
+  steps.push('Aggiungere il sale e far girare 3 min');
+  steps.push('Aggiungere l\'acqua restante in 2°Vel per 3 min');
+  
+  if (hasOil) {
+    steps.push('Ultimare con l\'olio');
+  }
+  
+  steps.push('Mettere in vasche 60x40');
+  
+  defaultMixProcedure = steps.join('. ') + '.';
 
   managementData.push([
     'IMPASTO',
     mixMgmt?.procedure || defaultMixProcedure,
-    mixMgmt?.time ? `${mixMgmt.time} min` : '15-20 min',
+    mixMgmt?.time ? `${mixMgmt.time} min` : '11 min',
     mixMgmt?.temp ? `${mixMgmt.temp}°C` : '24°C'
   ]);
 
@@ -333,9 +369,9 @@ export function generateRecipePDF(data: RecipePDFData): void {
   const puntMgmt = mgmt?.puntata;
   managementData.push([
     'PUNTATA',
-    puntMgmt?.procedure || 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.',
-    puntMgmt?.time ? `${puntMgmt.time} ore` : '1-2 ore',
-    puntMgmt?.temp || 'T.A.'
+    puntMgmt?.procedure || 'Inserire in contenitore leggermente oliato e far puntare a 24 ore 4°C / 15-20 min 24°C',
+    puntMgmt?.time ? `${puntMgmt.time}` : '24 ore 4°C / 15-20 min 24°C',
+    puntMgmt?.temp || '4°C / 24°C'
   ]);
 
   // Appretto

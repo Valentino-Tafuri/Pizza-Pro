@@ -146,16 +146,59 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
   const [autolysisTemp, setAutolysisTemp] = useState<string>(initialData?.autolysisTemp ?? 'T.A.');
   const [autolysisProcedure, setAutolysisProcedure] = useState<string>(initialData?.autolysisProcedure ?? 'Mescolare farina e acqua fino a formare un impasto omogeneo. Coprire e lasciar riposare.');
 
+  // Funzione helper per generare procedura IMPASTO pre-impostata
+  const generateDefaultMixingProcedure = (
+    hasPreferment: boolean,
+    hasAutolysis: boolean,
+    hasMalt: boolean,
+    hasOil: boolean
+  ): string => {
+    const steps: string[] = [];
+    
+    if (hasPreferment) {
+      steps.push('Inserire la biga');
+    }
+    
+    if (hasAutolysis) {
+      steps.push('Inserire l\'autolisi');
+    }
+    
+    steps.push('Inserire il lievito');
+    
+    if (hasMalt) {
+      steps.push('Inserire il malto');
+    }
+    
+    steps.push('Aggiungere acqua per raggiungere il 65%');
+    steps.push('Far girare per 5 min in 1°Vel');
+    steps.push('Aggiungere il sale e far girare 3 min');
+    steps.push('Aggiungere l\'acqua restante in 2°Vel per 3 min');
+    
+    if (hasOil) {
+      steps.push('Ultimare con l\'olio');
+    }
+    
+    steps.push('Mettere in vasche 60x40');
+    
+    return steps.join('. ') + '.';
+  };
+
   // Gestione Impasto (chiusura)
-  const [mixingTime, setMixingTime] = useState<string>(initialData?.mixingTime ?? '15-20');
+  const [mixingTime, setMixingTime] = useState<string>(initialData?.mixingTime ?? '11');
   const [mixingTemp, setMixingTemp] = useState<string>(initialData?.mixingTemp ?? '24');
-  const [mixingProcedure, setMixingProcedure] = useState<string>(initialData?.mixingProcedure ?? 'Versare acqua con sale e lievito nella macchina. Aggiungere la farina a pioggia. Impastare fino a incordatura.');
+  const defaultMixingProcedure = generateDefaultMixingProcedure(
+    initialData?.usePreferment ?? false,
+    initialData?.useAutolysis ?? false,
+    (initialData?.maltPercentage ?? 0) >= 0.1,
+    (initialData?.oilPercentage ?? 0) > 0
+  );
+  const [mixingProcedure, setMixingProcedure] = useState<string>(initialData?.mixingProcedure ?? defaultMixingProcedure);
 
   // Puntata (prima lievitazione in massa)
   const [usePuntata, setUsePuntata] = useState<boolean>(initialData?.usePuntata ?? true);
-  const [puntataTime, setPuntataTime] = useState<string>(initialData?.puntataTime ?? '30-60');
-  const [puntataTemp, setPuntataTemp] = useState<string>(initialData?.puntataTemp ?? 'T.A.');
-  const [puntataProcedure, setPuntataProcedure] = useState<string>(initialData?.puntataProcedure ?? 'Lasciare l\'impasto coperto a temperatura ambiente. Eseguire pieghe se necessario.');
+  const [puntataTime, setPuntataTime] = useState<string>(initialData?.puntataTime ?? '24 ore 4°C / 15-20 min 24°C');
+  const [puntataTemp, setPuntataTemp] = useState<string>(initialData?.puntataTemp ?? '4°C / 24°C');
+  const [puntataProcedure, setPuntataProcedure] = useState<string>(initialData?.puntataProcedure ?? 'Inserire in contenitore leggermente oliato e far puntare a 24 ore 4°C / 15-20 min 24°C');
 
   // Appretto vs Pre-shape
   const [usePreShape, setUsePreShape] = useState<boolean>(initialData?.usePreShape ?? false); // false = Appretto, true = Pre-shape
@@ -341,6 +384,21 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
       setSelectedYeastId(availableYeast[0].id);
     }
   }, [availableWater, availableSalt, availableOil, availableMalt, availableYeast]);
+
+  // Aggiorna procedura IMPASTO automaticamente quando cambiano i selettori (solo se non modificata manualmente)
+  useEffect(() => {
+    // Aggiorna solo se non è stato passato un valore iniziale personalizzato
+    if (!initialData?.mixingProcedure) {
+      const newProcedure = generateDefaultMixingProcedure(
+        usePreferment,
+        useAutolysis,
+        maltPercentage >= 0.1,
+        oilPercentage > 0
+      );
+      setMixingProcedure(newProcedure);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usePreferment, useAutolysis, maltPercentage, oilPercentage]);
   
   // Calcoli
   const { result, errors, isValid } = useDoughCalculations({
@@ -1661,7 +1719,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                 };
 
                 await onSave({
-                  name: recipeName.trim(),
+                  name: normalizeText(recipeName.trim()),
                   category: recipeCategory.trim(),
                   hydration: totalHydration,
                   portionWeight,
@@ -2021,7 +2079,8 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                         return;
                       }
                       if (onAddIngredient) {
-                        const newId = await onAddIngredient(newIngredientForm as Ingredient);
+                        const ingredientToSave = { ...newIngredientForm, name: normalizeText(newIngredientForm.name || '') } as Ingredient;
+                        const newId = await onAddIngredient(ingredientToSave);
                         if (newId) {
                           setShowAddIngredientModal(false);
                           setAddIngredientSearch('');

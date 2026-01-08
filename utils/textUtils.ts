@@ -8,5 +8,15 @@ export const normalizeText = (text: string): string => {
     .join(' ');
 };
 
+// Categorie del laboratorio che non devono apparire come topping
+export const LAB_CATEGORIES = ['Pizza', 'Pane', 'Dolci', 'Panificazione', 'Focaccia', 'Taralli', 'Biscotti', 'Grissini', 'Crackers'];
+
+// Verifica se una categoria è una categoria del laboratorio
+export const isLabCategory = (category: string | null | undefined): boolean => {
+  if (!category) return false;
+  return LAB_CATEGORIES.includes(category);
+};
+
+
 
 

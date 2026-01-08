@@ -266,35 +266,31 @@ const App: React.FC = () => {
         console.log(`[App] Etichetta ${i + 1} salvata con successo`);
       }
       
-      // Aggiorna stock preparazione (solo per NON-impasti)
+      // Aggiorna stock preparazione (per tutti i tipi: impasti e topping)
       const prepId = labels[0].preparationId;
       const prep = preparations.find(p => p.id === prepId);
 
       if (prep) {
-        // Se è un impasto (ha advancedCalculatorData), NON aggiorniamo il magazzino
         const isImpasto = !!prep.advancedCalculatorData;
+        const unitLabel = isImpasto ? 'cassette' : 'unità';
 
-        if (isImpasto) {
-          console.log('[App] Preparazione è un impasto - skip aggiornamento magazzino:', prep.name);
-        } else {
-          console.log('[App] Aggiornamento stock per preparazione:', prep.name, 'da', prep.currentStock, 'a', prep.currentStock + stockQuantity);
-          const newStock = prep.currentStock + stockQuantity;
-          await handleUpdateStock(prepId, newStock, `Carico automatico: ${stockQuantity} ${stockQuantity > 1 ? 'unità' : 'unità'} da etichetta FIFO`);
+        console.log('[App] Aggiornamento stock per preparazione:', prep.name, 'da', prep.currentStock, 'a', prep.currentStock + stockQuantity, `(${unitLabel})`);
+        const newStock = prep.currentStock + stockQuantity;
+        await handleUpdateStock(prepId, newStock, `Carico automatico: ${stockQuantity} ${unitLabel} da etichetta FIFO`);
 
-          // Crea movimento carico
-          const movementId = `mov_${Date.now()}`;
-          await handleSave('stockMovements', {
-            id: movementId,
-            type: 'load' as const,
-            preparationId: prepId,
-            preparationName: prep.name,
-            quantity: stockQuantity,
-            userId: user.uid,
-            userName: userName,
-            timestamp: Timestamp.now()
-          });
-          console.log('[App] Movimento carico creato:', movementId, '- Quantità:', stockQuantity);
-        }
+        // Crea movimento carico
+        const movementId = `mov_${Date.now()}`;
+        await handleSave('stockMovements', {
+          id: movementId,
+          type: 'load' as const,
+          preparationId: prepId,
+          preparationName: prep.name,
+          quantity: stockQuantity,
+          userId: user.uid,
+          userName: userName,
+          timestamp: Timestamp.now()
+        });
+        console.log('[App] Movimento carico creato:', movementId, '- Quantità:', stockQuantity, unitLabel);
       } else {
         console.warn('[App] Preparazione non trovata per ID:', prepId);
       }
@@ -308,23 +304,23 @@ const App: React.FC = () => {
 
   const handleScanLabel = async (labelId: string, userId: string) => {
     if (!user) return;
-    
+
     // Trova label
     const label = fifoLabels.find(l => l.id === labelId);
     if (!label) {
-      alert('❌ Etichetta non trovata!');
+      console.error('[App] Etichetta non trovata:', labelId);
       return;
     }
-    
+
     if (label.status !== 'active') {
-      alert(label.status === 'consumed' ? '⚠️ Etichetta già usata!' : '⚠️ Etichetta non valida!');
+      console.warn('[App] Etichetta non attiva:', label.status);
       return;
     }
-    
+
     // Check scadenza
     const expiryDate = label.expiryDate?.toDate?.() || new Date(label.expiryDate);
     if (expiryDate < new Date()) {
-      alert('⚠️ PRODOTTO SCADUTO! Non utilizzare.');
+      console.warn('[App] Prodotto scaduto');
       await handleSave('fifoLabels', {
         ...label,
         status: 'expired',
@@ -332,14 +328,14 @@ const App: React.FC = () => {
       });
       return;
     }
-    
-    // Scarica stock
+
+    // Scarica stock preparazione
     const prep = preparations.find(p => p.id === label.preparationId);
     if (prep && prep.currentStock > 0) {
       await handleUpdateStock(prep.id, prep.currentStock - 1, `Scarico automatico da scan etichetta FIFO`);
-      
+
       const userName = `${userData.firstName} ${userData.lastName}`;
-      
+
       // Aggiorna label
       await handleSave('fifoLabels', {
         ...label,
@@ -348,7 +344,7 @@ const App: React.FC = () => {
         consumedBy: userName,
         expiryDate: label.expiryDate
       });
-      
+
       // Crea movimento scarico
       await handleSave('stockMovements', {
         id: `mov_${Date.now()}`,
@@ -361,8 +357,55 @@ const App: React.FC = () => {
         timestamp: Timestamp.now(),
         labelId: label.id
       });
-      
-      alert(`✅ ${prep.name} scaricato con successo!`);
+
+      // Scarica ingredienti usati dalla ricetta (proporzionale a 1 unità)
+      const subRecipe = subRecipes.find(sr => sr.id === label.preparationId);
+      if (subRecipe && subRecipe.components && subRecipe.components.length > 0) {
+        console.log('[App] Scarico ingredienti per ricetta:', subRecipe.name);
+
+        // Calcola il fattore di scala: 1 unità rispetto alla resa totale
+        // yieldWeight è in kg, portionWeight è in grammi
+        const portionWeight = subRecipe.portionWeight || 1000; // Default 1kg se non specificato
+        const yieldWeight = subRecipe.yieldWeight || 1; // kg
+        const scaleFactor = (portionWeight / 1000) / yieldWeight; // Fattore per 1 porzione
+
+        for (const component of subRecipe.components) {
+          if (component.type === 'ingredient') {
+            const ingredient = ingredients.find(i => i.id === component.id);
+            if (ingredient && ingredient.currentStock !== undefined && ingredient.currentStock > 0) {
+              // Quantità da scaricare = quantità nella ricetta * fattore di scala
+              // component.quantity è in grammi
+              let quantityToUnload = (component.quantity / 1000) * scaleFactor; // Converti in kg
+
+              // Converti in base all'unità dell'ingrediente
+              if (ingredient.unit === 'g') {
+                quantityToUnload = component.quantity * scaleFactor;
+              } else if (ingredient.unit === 'ml') {
+                quantityToUnload = component.quantity * scaleFactor;
+              } else if (ingredient.unit === 'l') {
+                quantityToUnload = (component.quantity / 1000) * scaleFactor;
+              } else if (ingredient.unit === 'unit' || ingredient.unit === 'pz') {
+                quantityToUnload = Math.ceil(component.quantity * scaleFactor);
+              }
+
+              // Arrotonda a 3 decimali
+              quantityToUnload = Math.round(quantityToUnload * 1000) / 1000;
+
+              if (quantityToUnload > 0) {
+                const newStock = Math.max(0, ingredient.currentStock - quantityToUnload);
+                console.log(`[App] Scarico ingrediente ${ingredient.name}: ${quantityToUnload} ${ingredient.unit} (${ingredient.currentStock} -> ${newStock})`);
+
+                await handleSave('ingredients', {
+                  ...ingredient,
+                  currentStock: newStock
+                });
+              }
+            }
+          }
+        }
+      }
+
+      console.log('[App] Scarico completato:', prep.name);
     }
   };
 
@@ -510,14 +553,16 @@ const App: React.FC = () => {
       case 'custom-labels':
         return <CustomLabelsView />;
       case 'inventario-scan':
-      case 'scan': 
-        return <ScanView 
+      case 'scan':
+        return <ScanView
           preparations={preparations}
           fifoLabels={fifoLabels}
           stockMovements={stockMovements}
-          currentUser={{ 
-            id: user.uid, 
-            name: `${userData.firstName} ${userData.lastName}` 
+          ingredients={ingredients}
+          subRecipes={subRecipes}
+          currentUser={{
+            id: user.uid,
+            name: `${userData.firstName} ${userData.lastName}`
           }}
           onScanLabel={handleScanLabel}
         />;

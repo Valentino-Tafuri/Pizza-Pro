@@ -92,6 +92,7 @@ export interface Ingredient {
   pricePerUnit: number;
   category: string;
   supplierId?: string;
+  currentStock?: number; // Stock attuale (opzionale per retrocompatibilità)
 }
 
 export interface ComponentUsage {

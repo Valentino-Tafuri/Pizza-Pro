@@ -159,62 +159,71 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
 
     setIsGenerating(true);
     try {
-      console.log('[FifoLabelsView] Inizio generazione etichetta singola:', {
+      const isImpastoPrep = isImpasto(selectedPrep);
+      const numLabels = labelCount; // Numero di etichette da generare
+
+      console.log('[FifoLabelsView] Inizio generazione etichette:', {
         preparation: selectedPrep.name,
         preparationId: selectedPrep.id,
-        expiryDate
+        expiryDate,
+        numLabels,
+        isImpasto: isImpastoPrep
       });
 
-      // Genera UNA SOLA etichetta con ID univoco
+      const labels: FifoLabel[] = [];
       const timestamp = Date.now();
-      const randomSuffix = Math.random().toString(36).substr(2, 6); // Aggiungi random per evitare duplicati
-      const labelId = `${selectedPrep.id}_${timestamp}_${randomSuffix}`;
-      const qrData = `FIFO:${labelId}`;
 
-      const qrCodeImage = await generateQRCode(qrData);
+      // Genera N etichette con QR code UNIVOCI
+      for (let i = 0; i < numLabels; i++) {
+        const randomSuffix = Math.random().toString(36).substr(2, 6);
+        const labelId = `${selectedPrep.id}_${timestamp}_${i}_${randomSuffix}`;
+        const qrData = `FIFO:${labelId}`;
 
-      if (!qrCodeImage) {
-        throw new Error('Errore generazione QR code');
+        const qrCodeImage = await generateQRCode(qrData);
+
+        if (!qrCodeImage) {
+          throw new Error(`Errore generazione QR code per etichetta ${i + 1}`);
+        }
+
+        const barcode = extractBarcode(labelId);
+
+        // Per impasti, ogni cassetta ha info diverse
+        let cassetteInfo: string | undefined;
+        if (isImpastoPrep && impastoCalculations) {
+          const panettiInCassetta = impastoCalculations.cassetteDistribution[i] || 0;
+          cassetteInfo = `Cassetta ${i + 1}/${impastoCalculations.numCassette} - ${panettiInCassetta} pz`;
+        }
+
+        const label: FifoLabel = {
+          id: labelId,
+          preparationId: selectedPrep.id,
+          preparationName: selectedPrep.name,
+          qrCode: qrCodeImage,
+          barcode: barcode,
+          expiryDate: new Date(expiryDate),
+          createdAt: new Date(),
+          createdBy: '', // Sarà popolato in App.tsx
+          status: 'active',
+          ...(cassetteInfo && { cassetteInfo })
+        };
+
+        labels.push(label);
+        console.log(`[FifoLabelsView] Etichetta ${i + 1}/${numLabels} generata:`, labelId);
       }
 
-      const barcode = extractBarcode(labelId);
+      // Salva TUTTE le etichette nel database
+      console.log('[FifoLabelsView] Salvataggio', labels.length, 'etichette nel database');
+      await onGenerateLabels(labels, numLabels);
 
-      // Per impasti, aggiungi info cassetta (solo per la prima cassetta)
-      let prepName = selectedPrep.name;
-      let cassetteInfo: string | undefined;
-      const isImpastoPrep = isImpasto(selectedPrep);
-      if (isImpastoPrep && impastoCalculations) {
-        const panettiInCassetta = impastoCalculations.cassetteDistribution[0] || 0;
-        cassetteInfo = `Cassetta 1/${impastoCalculations.numCassette} - ${panettiInCassetta} pz`;
-      }
-
-      const label: FifoLabel = {
-        id: labelId,
-        preparationId: selectedPrep.id,
-        preparationName: prepName,
-        qrCode: qrCodeImage,
-        barcode: barcode,
-        expiryDate: new Date(expiryDate),
-        createdAt: new Date(),
-        createdBy: '', // Sarà popolato in App.tsx
-        status: 'active',
-        // Campo extra per info cassetta (opzionale)
-        ...(cassetteInfo && { cassetteInfo })
-      };
-
-      // Salva SOLO UNA etichetta nel database, ma passa la quantità di stock corretta
-      console.log('[FifoLabelsView] Salvataggio etichetta nel database:', labelId, '- Stock da aggiungere:', labelCount);
-      await onGenerateLabels([label], labelCount);
-
-      console.log('[FifoLabelsView] Etichetta generata e salvata con successo');
-      setGeneratedLabels([label]); // Solo una etichetta nello stato
+      console.log('[FifoLabelsView] Tutte le etichette generate e salvate con successo');
+      setGeneratedLabels(labels);
       setShowPrintPreview(true);
 
-      alert(`✅ Etichetta generata con successo!\n\n📋 Etichette necessarie: ${labelCount}\n\nClicca "Stampa" per aprire la finestra di stampa.\nImposta il numero di copie nelle impostazioni di stampa del sistema.`);
+      alert(`✅ ${numLabels} etichette generate con successo!\n\nOgni etichetta ha un QR code univoco.\nClicca "Stampa" per stampare tutte le etichette.`);
     } catch (error) {
-      console.error('[FifoLabelsView] Errore generazione etichetta:', error);
+      console.error('[FifoLabelsView] Errore generazione etichette:', error);
       const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
-      alert(`❌ Errore durante la generazione dell'etichetta:\n${errorMessage}\n\nControlla la console per maggiori dettagli.`);
+      alert(`❌ Errore durante la generazione delle etichette:\n${errorMessage}\n\nControlla la console per maggiori dettagli.`);
     } finally {
       setIsGenerating(false);
     }
@@ -222,29 +231,64 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
 
   const handlePrint = () => {
     if (generatedLabels.length === 0) {
-      alert('Nessuna etichetta da stampare. Genera prima un\'etichetta.');
+      alert('Nessuna etichetta da stampare. Genera prima le etichette.');
       return;
     }
 
-    console.log('[FifoLabelsView] Stampa richiesta - Etichette necessarie:', labelCount);
+    console.log('[FifoLabelsView] Stampa richiesta -', generatedLabels.length, 'etichette');
 
-    // Apri finestra di stampa con contenuto dinamico
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Impossibile aprire la finestra di stampa. Controlla i popup blocker.');
-      return;
+    // Genera HTML per TUTTE le etichette (una per pagina)
+    const labelsHtml = generatedLabels.map((label, index) => {
+      const createdAt = label.createdAt?.toDate?.() || new Date(label.createdAt);
+      const expiryDateLabel = label.expiryDate?.toDate?.() || new Date(label.expiryDate);
+
+      return `
+        <div class="label-container" ${index < generatedLabels.length - 1 ? 'style="page-break-after: always;"' : ''}>
+          <div class="qr-section">
+            <div class="qr-code">
+              <img src="${label.qrCode}" alt="QR Code" />
+            </div>
+            <div class="barcode-text">${label.barcode}</div>
+          </div>
+          <div class="info-section">
+            <div>
+              <div class="prep-name">${label.preparationName}</div>
+              ${label.cassetteInfo ? `<div class="cassette-info">${label.cassetteInfo}</div>` : ''}
+              <div class="date-row">Prod: ${createdAt.toLocaleDateString('it-IT')}</div>
+            </div>
+            <div>
+              <div class="expiry-box">
+                <div class="expiry-label">SCADENZA</div>
+                <div class="expiry-date">${expiryDateLabel.toLocaleDateString('it-IT')}</div>
+              </div>
+              <div class="label-id">ID: ${label.id.slice(-8)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Crea iframe nascosto per stampa (evita popup blocker)
+    const existingIframe = document.getElementById('print-iframe');
+    if (existingIframe) {
+      existingIframe.remove();
     }
 
-    const labelToPrint = generatedLabels[0]; // Prendi l'unica etichetta
-    const createdAt = labelToPrint.createdAt?.toDate?.() || new Date(labelToPrint.createdAt);
-    const expiryDateLabel = labelToPrint.expiryDate?.toDate?.() || new Date(labelToPrint.expiryDate);
+    const iframe = document.createElement('iframe');
+    iframe.id = 'print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
 
-    // Genera HTML per etichette termiche 62mm x 40mm (Brother e compatibili)
     const printContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Etichetta FIFO - ${labelToPrint.preparationName}</title>
+        <title>Etichette FIFO - ${generatedLabels[0]?.preparationName || 'Stampa'}</title>
         <style>
           * {
             margin: 0;
@@ -257,13 +301,8 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
           }
           @media print {
             html, body {
-              width: 62mm;
-              height: 40mm;
               margin: 0;
               padding: 0;
-            }
-            .print-info {
-              display: none !important;
             }
           }
           body {
@@ -357,57 +396,31 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
             color: #666;
             font-family: monospace;
           }
-          .print-info {
-            margin-top: 10mm;
-            padding: 4mm;
-            background: #f0f9ff;
-            border: 1px solid #0ea5e9;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #0369a1;
-          }
         </style>
       </head>
       <body>
-        <div class="label-container">
-          <div class="qr-section">
-            <div class="qr-code">
-              <img src="${labelToPrint.qrCode}" alt="QR Code" />
-            </div>
-            <div class="barcode-text">${labelToPrint.barcode}</div>
-          </div>
-          <div class="info-section">
-            <div>
-              <div class="prep-name">${labelToPrint.preparationName}</div>
-              ${labelToPrint.cassetteInfo ? `<div class="cassette-info">${labelToPrint.cassetteInfo}</div>` : ''}
-              <div class="date-row">Prod: ${createdAt.toLocaleDateString('it-IT')}</div>
-            </div>
-            <div>
-              <div class="expiry-box">
-                <div class="expiry-label">SCADENZA</div>
-                <div class="expiry-date">${expiryDateLabel.toLocaleDateString('it-IT')}</div>
-              </div>
-              <div class="label-id">ID: ${labelToPrint.id.slice(-8)}</div>
-            </div>
-          </div>
-        </div>
-        <div class="print-info">
-          <strong>📋 Etichette necessarie: ${labelCount}</strong><br>
-          Formato: 62mm x 40mm (Brother/stampanti termiche)<br>
-          Imposta il numero di copie nelle impostazioni di stampa.
-        </div>
+        ${labelsHtml}
       </body>
       </html>
     `;
 
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.focus();
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(printContent);
+      iframeDoc.close();
 
-    // Attendi che il contenuto sia caricato prima di avviare la stampa
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+      // Attendi caricamento immagini QR poi stampa
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+
+        // Rimuovi iframe dopo stampa
+        setTimeout(() => {
+          iframe.remove();
+        }, 1000);
+      }, 500);
+    }
   };
 
   return (
@@ -649,7 +662,7 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
               disabled={!selectedPrep || !expiryDate || isGenerating}
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl py-4 px-6 text-sm font-black uppercase transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
-              {isGenerating ? 'Generazione in corso...' : 'Genera Etichetta'}
+              {isGenerating ? 'Generazione in corso...' : `Genera ${labelCount > 1 ? labelCount + ' Etichette' : 'Etichetta'}`}
             </button>
             {(!selectedPrep || !expiryDate) && (
               <p className="text-xs font-semibold text-red-600 text-center">
@@ -670,9 +683,9 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
             <ul className="text-xs font-semibold text-blue-800 space-y-1 list-disc list-inside">
               <li>Seleziona la preparazione e la data di scadenza</li>
               <li>Controlla il numero di etichette necessarie (calcolato automaticamente)</li>
-              <li>Genera l'etichetta e clicca su "Stampa"</li>
-              <li>Imposta il numero di copie nelle impostazioni di stampa del sistema</li>
-              <li>Scansiona il QR code per scaricare il prodotto</li>
+              <li>Genera le etichette - ognuna avrà un QR code univoco</li>
+              <li>Clicca "Stampa" per stampare tutte le etichette in sequenza</li>
+              <li>Ogni etichetta può essere scansionata una sola volta</li>
             </ul>
           </div>
         </div>
@@ -682,9 +695,12 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
       {generatedLabels.length > 0 && showPrintPreview && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-black text-black">
-              Etichetta Generata
-            </h3>
+            <div>
+              <h3 className="text-xl font-black text-black">
+                {generatedLabels.length} Etichette Generate
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">Ogni etichetta ha un QR code univoco</p>
+            </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowPrintPreview(false)}
@@ -697,74 +713,64 @@ const FifoLabelsView: React.FC<FifoLabelsViewProps> = ({
                 className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white rounded-xl py-3 px-6 text-sm font-black transition-all active:scale-95"
               >
                 <Printer size={18} />
-                Stampa Etichetta
+                Stampa Tutte ({generatedLabels.length})
               </button>
             </div>
           </div>
 
-          {/* Print Area - Anteprima formato 62x40mm */}
-          <div className="print-area">
-            {/* Anteprima schermo: formato 62mm x 40mm */}
-            <div className="screen-preview mb-6 flex justify-center">
+          {/* Info formato stampa */}
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+            <p className="text-xs font-semibold text-green-800">
+              ✅ <strong>{generatedLabels.length} etichette</strong> pronte per la stampa<br/>
+              🏷️ Formato: <strong>62mm x 40mm</strong> (Brother / stampanti termiche)<br/>
+              📄 Ogni etichetta verrà stampata su una pagina separata
+            </p>
+          </div>
+
+          {/* Griglia anteprima etichette */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto">
+            {generatedLabels.map((label, index) => (
               <div
-                className="label-preview bg-white border-2 border-gray-800 flex gap-2"
-                style={{ width: '234px', height: '151px', padding: '8px' }} // 62mm x 40mm @ 96dpi ~= 234x151px
+                key={label.id}
+                className="label-preview bg-white border-2 border-gray-300 rounded-lg flex gap-2 hover:border-gray-500 transition-all"
+                style={{ padding: '8px' }}
               >
-                {generatedLabels[0] && (
-                  <>
-                    {/* QR Code Section */}
-                    <div className="flex-shrink-0 flex flex-col items-center justify-center" style={{ width: '120px' }}>
-                      <img
-                        src={generatedLabels[0].qrCode}
-                        alt="QR Code"
-                        className="w-24 h-24"
-                      />
-                      <p className="text-[8px] font-mono text-gray-600 mt-1">
-                        {generatedLabels[0].barcode}
+                {/* QR Code Section */}
+                <div className="flex-shrink-0 flex flex-col items-center justify-center" style={{ width: '80px' }}>
+                  <img
+                    src={label.qrCode}
+                    alt={`QR Code ${index + 1}`}
+                    className="w-16 h-16"
+                  />
+                  <p className="text-[6px] font-mono text-gray-500 mt-1">
+                    #{index + 1}
+                  </p>
+                </div>
+                {/* Info Section */}
+                <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
+                  <div>
+                    <h4 className="font-bold text-black text-[9px] uppercase leading-tight mb-1 truncate">
+                      {label.preparationName}
+                    </h4>
+                    {label.cassetteInfo && (
+                      <div className="border border-black px-1 py-0.5 mb-1 text-center">
+                        <p className="text-[7px] font-bold">
+                          {label.cassetteInfo}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="border border-black px-1 py-0.5 text-center">
+                      <p className="text-[6px] font-bold">SCADE</p>
+                      <p className="text-[8px] font-black">
+                        {(label.expiryDate?.toDate?.() || new Date(label.expiryDate)).toLocaleDateString('it-IT')}
                       </p>
                     </div>
-                    {/* Info Section */}
-                    <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
-                      <div>
-                        <h4 className="font-black text-black text-[10px] uppercase leading-tight mb-1 break-words">
-                          {generatedLabels[0].preparationName}
-                        </h4>
-                        {generatedLabels[0].cassetteInfo && (
-                          <div className="border border-black px-1 py-0.5 mb-1 text-center">
-                            <p className="text-[8px] font-bold">
-                              {generatedLabels[0].cassetteInfo}
-                            </p>
-                          </div>
-                        )}
-                        <p className="text-[7px] text-gray-500">
-                          Prod: {(generatedLabels[0].createdAt?.toDate?.() || new Date(generatedLabels[0].createdAt)).toLocaleDateString('it-IT')}
-                        </p>
-                      </div>
-                      <div>
-                        <div className="border-2 border-black px-1 py-1 text-center mb-1">
-                          <p className="text-[7px] font-bold">SCADENZA</p>
-                          <p className="text-[11px] font-black">
-                            {(generatedLabels[0].expiryDate?.toDate?.() || new Date(generatedLabels[0].expiryDate)).toLocaleDateString('it-IT')}
-                          </p>
-                        </div>
-                        <p className="text-[6px] text-gray-400 font-mono">
-                          ID: {generatedLabels[0].id.slice(-8)}
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
+                  </div>
+                </div>
               </div>
-            </div>
-
-            {/* Info formato stampa */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
-              <p className="text-xs font-semibold text-blue-800">
-                🏷️ Formato etichetta: <strong>62mm x 40mm</strong> (Brother / stampanti termiche)<br/>
-                📋 Etichette necessarie: <strong>{labelCount}</strong><br/>
-                Imposta il numero di copie nelle impostazioni di stampa.
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       )}

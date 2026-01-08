@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, X, Edit2, Trash2, Loader2, Wand2, BrainCircuit, ClipboardList, ArrowRight, AlertTriangle, Upload, FileText, Check } from 'lucide-react';
 import { MenuItem, Ingredient, SubRecipe, ComponentUsage, Unit, Supplier, UserData } from '../../types';
-import { normalizeText } from '../../utils/textUtils';
+import { normalizeText, isLabCategory } from '../../utils/textUtils';
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 import { calculateMenuItemCost, calculateSubRecipeCostPerKg, getFoodCostColor } from '../../services/calculator';
@@ -345,13 +345,17 @@ Header richiesti:
         
         setCsvData(parsed);
         
-        // Check for missing toppings
+        // Check for missing toppings (escludi ricette del laboratorio)
         const toppingsInCsv = new Set(
           parsed
             .map(row => row.topping_collegato?.trim())
             .filter(Boolean)
         );
-        const existingToppingNames = new Set(subRecipes.map(sr => sr.name.toLowerCase()));
+        const existingToppingNames = new Set(
+          subRecipes
+            .filter(sr => !isLabCategory(sr.category))
+            .map(sr => sr.name.toLowerCase())
+        );
         
         const missing: {name: string; usedIn: {name: string; price: number}[]}[] = [];
         
@@ -403,6 +407,7 @@ Header richiesti:
     
     const newId = await onAddSubRecipe({
       ...newToppingForm,
+      name: normalizeText(newToppingForm.name),
       id: Math.random().toString(36).substr(2, 9),
       components: newToppingForm.components || [],
       initialWeight: newToppingForm.initialWeight || 1,
@@ -422,7 +427,12 @@ Header richiesti:
   };
 
   const handleConfirmImport = () => {
-    const existingToppingNames = new Map(subRecipes.map(sr => [sr.name.toLowerCase(), sr.id]));
+    // Escludi ricette del laboratorio dalla mappa dei topping
+    const existingToppingNames = new Map(
+      subRecipes
+        .filter(sr => !isLabCategory(sr.category))
+        .map(sr => [sr.name.toLowerCase(), sr.id])
+    );
     
     let importedCount = 0;
     let skippedCount = 0;
@@ -774,7 +784,7 @@ Header richiesti:
         </div>
 
         <button onClick={() => {
-          const payload = { ...form, id: editingId || Math.random().toString(36).substr(2,9), category: form.category || 'Generica', components: form.components || [] } as MenuItem;
+          const payload = { ...form, name: normalizeText(form.name || ''), id: editingId || Math.random().toString(36).substr(2,9), category: form.category || 'Generica', components: form.components || [] } as MenuItem;
           if (editingId) onUpdate(payload); else onAdd(payload);
           setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false);
         }} className="w-full py-6 bg-black text-white rounded-[2rem] font-black shadow-2xl active:scale-95 transition-all mt-4">Salva Pizza</button>
@@ -1229,7 +1239,11 @@ Header richiesti:
               <div className="mb-4">
                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 px-1">Preparazioni</p>
                 {subRecipes
-                  .filter(sub => sub.name.toLowerCase().includes(addComponentSearch.toLowerCase()))
+                  .filter(sub => {
+                    // Escludi ricette del laboratorio (non devono essere topping)
+                    if (isLabCategory(sub.category)) return false;
+                    return sub.name.toLowerCase().includes(addComponentSearch.toLowerCase());
+                  })
                   .map(sub => {
                     const alreadyAdded = form.components?.some(c => c.id === sub.id && c.type === 'subrecipe');
                     return (
@@ -1308,7 +1322,7 @@ Header richiesti:
               </div>
               
               {!showNewIngredientForm && ingredients.filter(ing => ing.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 &&
-               subRecipes.filter(sub => sub.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 &&
+               subRecipes.filter(sub => !isLabCategory(sub.category) && sub.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 &&
                menu.filter(item => item.id !== editingId && item.name.toLowerCase().includes(addComponentSearch.toLowerCase())).length === 0 && (
                 <div className="text-center py-8 text-gray-400">
                   <p className="text-sm font-bold">Nessun risultato trovato</p>

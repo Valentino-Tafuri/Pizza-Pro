@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ScanBarcode, Camera, AlertCircle, CheckCircle, Clock, TrendingUp, X, Package, Calendar, User, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ScanBarcode, Camera, AlertCircle, CheckCircle, Clock, TrendingUp, X, Package, Calendar, User, ChevronRight, ShoppingBag } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Preparation, FifoLabel, StockMovement } from '../../types';
+import { Preparation, FifoLabel, StockMovement, Ingredient, SubRecipe } from '../../types';
 
 interface ScanViewProps {
   preparations: Preparation[];
   fifoLabels: FifoLabel[];
   stockMovements: StockMovement[];
+  ingredients: Ingredient[];
+  subRecipes: SubRecipe[];
   currentUser: { id: string; name: string };
   onScanLabel: (labelId: string, userId: string) => Promise<void>;
 }
@@ -23,6 +25,8 @@ const ScanView: React.FC<ScanViewProps> = ({
   preparations,
   fifoLabels,
   stockMovements,
+  ingredients,
+  subRecipes,
   currentUser,
   onScanLabel
 }) => {
@@ -39,8 +43,18 @@ const ScanView: React.FC<ScanViewProps> = ({
   const [scannedProduct, setScannedProduct] = useState<ScannedProduct | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [lastScanTime, setLastScanTime] = useState(0);
+  const [showSuccess, setShowSuccess] = useState(false); // Feedback successo
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showPostScanChoice, setShowPostScanChoice] = useState(false); // Scelta dopo scarico
   const processingRef = useRef(false);
+  const lastScanTimeRef = useRef(0);
+  const lastScannedLabelRef = useRef<string | null>(null); // Anti-duplicati
+  const showConfirmModalRef = useRef(false);
+
+  // Sincronizza ref con stato del modal
+  useEffect(() => {
+    showConfirmModalRef.current = showConfirmModal;
+  }, [showConfirmModal]);
 
   // Filtra movimenti di scarico
   useEffect(() => {
@@ -79,6 +93,55 @@ const ScanView: React.FC<ScanViewProps> = ({
     return { todayScans, weekScans, totalScans };
   }, [stockMovements]);
 
+  // Calcola ingredienti che verranno scaricati per il prodotto scansionato
+  const ingredientsToUnload = useMemo(() => {
+    if (!scannedProduct || scannedProduct.isConsumed || scannedProduct.isExpired) {
+      return [];
+    }
+
+    const subRecipe = subRecipes.find(sr => sr.id === scannedProduct.label.preparationId);
+    if (!subRecipe || !subRecipe.components || subRecipe.components.length === 0) {
+      return [];
+    }
+
+    // Calcola il fattore di scala
+    const portionWeight = subRecipe.portionWeight || 1000;
+    const yieldWeight = subRecipe.yieldWeight || 1;
+    const scaleFactor = (portionWeight / 1000) / yieldWeight;
+
+    const result: { name: string; quantity: number; unit: string; hasStock: boolean }[] = [];
+
+    for (const component of subRecipe.components) {
+      if (component.type === 'ingredient') {
+        const ingredient = ingredients.find(i => i.id === component.id);
+        if (ingredient) {
+          let quantityToUnload = 0;
+
+          if (ingredient.unit === 'g' || ingredient.unit === 'ml') {
+            quantityToUnload = component.quantity * scaleFactor;
+          } else if (ingredient.unit === 'kg' || ingredient.unit === 'l') {
+            quantityToUnload = (component.quantity / 1000) * scaleFactor;
+          } else {
+            quantityToUnload = Math.ceil(component.quantity * scaleFactor);
+          }
+
+          quantityToUnload = Math.round(quantityToUnload * 1000) / 1000;
+
+          if (quantityToUnload > 0) {
+            result.push({
+              name: ingredient.name,
+              quantity: quantityToUnload,
+              unit: ingredient.unit,
+              hasStock: ingredient.currentStock !== undefined && ingredient.currentStock >= quantityToUnload
+            });
+          }
+        }
+      }
+    }
+
+    return result;
+  }, [scannedProduct, subRecipes, ingredients]);
+
   // Controlla permessi camera
   useEffect(() => {
     const checkCameraPermission = async () => {
@@ -103,8 +166,14 @@ const ScanView: React.FC<ScanViewProps> = ({
     const onScanSuccess = async (decodedText: string) => {
       console.log('[ScanView] ✅ QR Code scansionato:', decodedText);
 
-      // DEBUG: mostra alert per confermare che la callback viene chiamata
-      alert(`QR Letto: ${decodedText.substring(0, 50)}...`);
+      // Ferma immediatamente lo scanner per evitare letture multiple
+      if (scannerRef.current) {
+        try {
+          scannerRef.current.pause(true);
+        } catch (e) {
+          // Ignora errori
+        }
+      }
 
       if (decodedText.startsWith('FIFO:')) {
         const labelId = decodedText.replace('FIFO:', '');
@@ -114,11 +183,16 @@ const ScanView: React.FC<ScanViewProps> = ({
           await handleFifoScanRef.current(labelId);
         } else {
           console.error('[ScanView] handleFifoScanRef.current è undefined!');
-          alert('Errore: callback non disponibile');
         }
       } else {
         console.log('[ScanView] QR Code non valido, formato non FIFO');
         alert('QR Code non valido. Usa un\'etichetta FIFO.');
+        // Riattiva scanner per riprovare
+        if (scannerRef.current) {
+          try {
+            scannerRef.current.resume();
+          } catch (e) {}
+        }
       }
     };
 
@@ -198,21 +272,28 @@ const ScanView: React.FC<ScanViewProps> = ({
   const handleFifoScan = async (labelId: string) => {
     console.log('[ScanView] handleFifoScan chiamata con labelId:', labelId);
 
-    // Previeni scan multipli ravvicinati (debounce 2 secondi)
+    // Previeni scan multipli ravvicinati (debounce 5 secondi)
     const now = Date.now();
-    if (now - lastScanTime < 2000) {
-      console.log('[ScanView] Scan ignorato - troppo ravvicinato');
+    if (now - lastScanTimeRef.current < 5000) {
+      console.log('[ScanView] Scan ignorato - troppo ravvicinato (debounce 5s)');
+      return;
+    }
+
+    // Previeni scan duplicato dello stesso QR code consecutivamente
+    if (lastScannedLabelRef.current === labelId) {
+      console.log('[ScanView] Scan ignorato - stesso QR code già scansionato');
       return;
     }
 
     // Previeni elaborazioni multiple simultanee
-    if (processingRef.current || showConfirmModal) {
+    if (processingRef.current || showConfirmModalRef.current || showPostScanChoice) {
       console.log('[ScanView] Scan ignorato - elaborazione in corso o modal aperto');
       return;
     }
 
     processingRef.current = true;
-    setLastScanTime(now);
+    lastScanTimeRef.current = now;
+    lastScannedLabelRef.current = labelId; // Salva per anti-duplicati
 
     try {
       console.log('[ScanView] Cercando label tra', fifoLabels.length, 'etichette');
@@ -268,6 +349,8 @@ const ScanView: React.FC<ScanViewProps> = ({
     if (!scannedProduct || isProcessing) return;
 
     setIsProcessing(true);
+    const productName = scannedProduct.label.preparationName;
+
     try {
       await onScanLabel(scannedProduct.label.id, currentUser.id);
 
@@ -282,20 +365,19 @@ const ScanView: React.FC<ScanViewProps> = ({
         .slice(0, 10);
       setScanHistory(unloads);
 
-      // Chiudi modal e riattiva scanner
+      // Mostra feedback successo
+      setSuccessMessage(productName);
+      setShowSuccess(true);
       setShowConfirmModal(false);
       setScannedProduct(null);
 
-      // Riattiva scanner per prossimo scan
-      if (scannerRef.current) {
-        try {
-          scannerRef.current.resume();
-        } catch (e) {
-          // Se resume fallisce, ricrea lo scanner
-          setScanActive(false);
-          setTimeout(() => setScanActive(true), 500);
-        }
-      }
+      // Dopo 1.5 secondi, nascondi successo e mostra scelta
+      setTimeout(() => {
+        setShowSuccess(false);
+        // NON riattivare scanner automaticamente!
+        // Mostra schermata di scelta
+        setShowPostScanChoice(true);
+      }, 1500);
     } catch (error) {
       console.error('Errore conferma scarico:', error);
     } finally {
@@ -307,6 +389,7 @@ const ScanView: React.FC<ScanViewProps> = ({
   const handleCancelScan = () => {
     setShowConfirmModal(false);
     setScannedProduct(null);
+    lastScannedLabelRef.current = null; // Reset anti-duplicati per nuovo scan
 
     // Riattiva scanner
     if (scannerRef.current) {
@@ -323,7 +406,35 @@ const ScanView: React.FC<ScanViewProps> = ({
   // Chiudi e ferma scanner
   const handleCloseScanner = () => {
     setShowConfirmModal(false);
+    setShowPostScanChoice(false);
     setScannedProduct(null);
+    lastScannedLabelRef.current = null;
+    setScanActive(false);
+  };
+
+  // Continua a scansionare (dalla schermata post-scarico)
+  const handleContinueScanning = () => {
+    setShowPostScanChoice(false);
+    setSuccessMessage('');
+    lastScannedLabelRef.current = null; // Reset anti-duplicati per nuovo prodotto
+
+    // Riattiva scanner
+    if (scannerRef.current) {
+      try {
+        scannerRef.current.resume();
+      } catch (e) {
+        // Se resume fallisce, ricrea lo scanner
+        setScanActive(false);
+        setTimeout(() => setScanActive(true), 500);
+      }
+    }
+  };
+
+  // Chiudi scanner (dalla schermata post-scarico)
+  const handleStopScanning = () => {
+    setShowPostScanChoice(false);
+    setSuccessMessage('');
+    lastScannedLabelRef.current = null;
     setScanActive(false);
   };
 
@@ -379,6 +490,60 @@ const ScanView: React.FC<ScanViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Feedback Successo Scarico */}
+      {showSuccess && (
+        <div className="fixed inset-0 bg-green-600/90 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-300">
+          <div className="text-center text-white">
+            <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+              <CheckCircle size={56} className="text-white" />
+            </div>
+            <h2 className="text-3xl font-black mb-2">Scaricato!</h2>
+            <p className="text-lg font-semibold opacity-90">{successMessage}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Schermata Scelta Post-Scarico */}
+      {showPostScanChoice && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in duration-300">
+            {/* Header Successo */}
+            <div className="bg-gradient-to-br from-green-500 to-green-600 p-8 text-white text-center">
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle size={48} />
+              </div>
+              <h2 className="text-2xl font-black mb-1">Scarico Completato</h2>
+              {successMessage && (
+                <p className="text-sm font-semibold opacity-90">{successMessage}</p>
+              )}
+            </div>
+
+            {/* Scelte */}
+            <div className="p-6 space-y-3">
+              <p className="text-center text-sm font-semibold text-gray-500 mb-4">
+                Cosa vuoi fare?
+              </p>
+
+              <button
+                onClick={handleContinueScanning}
+                className="w-full py-4 px-6 bg-black hover:bg-gray-800 text-white rounded-2xl text-base font-black transition-all active:scale-95 flex items-center justify-center gap-3"
+              >
+                <ScanBarcode size={22} />
+                Scansiona Altro Prodotto
+              </button>
+
+              <button
+                onClick={handleStopScanning}
+                className="w-full py-4 px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl text-base font-black transition-all active:scale-95 flex items-center justify-center gap-3"
+              >
+                <X size={22} />
+                Chiudi Scanner
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Conferma Scarico - Stile iOS */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
@@ -737,6 +902,7 @@ const ScanView: React.FC<ScanViewProps> = ({
 };
 
 export default ScanView;
+
 
 
 
