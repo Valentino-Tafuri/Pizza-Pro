@@ -316,15 +316,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`[Telegram] Messaggio da chat ${chatId}: ${text}`);
 
     // Trova user_id dal chat_id
+    console.log(`[Telegram Webhook] Cercando utente per Chat ID: ${chatId}`);
     const userId = await getUserIdFromTelegramChatId(chatId);
 
     if (!userId) {
+      console.log(`[Telegram Webhook] ❌ Utente non trovato per Chat ID: ${chatId}`);
+      // Mostra anche informazioni di debug
       await sendTelegramMessage(
         chatId,
-        '⚠️ *UTENTE NON CONFIGURATO*\n\nPer usare questo bot, configura il tuo Chat ID Telegram nelle impostazioni dell\'app.\n\nIl tuo Chat ID è: `' + chatId + '`'
+        '⚠️ *UTENTE NON CONFIGURATO*\n\nPer usare questo bot, configura il tuo Chat ID Telegram nelle impostazioni dell\'app.\n\nIl tuo Chat ID è: `' + chatId + '`\n\n*Verifica:*\n1. Hai inserito il Chat ID nel campo "Telegram Chat ID"?\n2. Hai cliccato "Salva Modifiche Profilo"?\n3. Hai atteso qualche secondo per la sincronizzazione?'
       );
       return res.status(200).json({ ok: true });
     }
+    
+    console.log(`[Telegram Webhook] ✅ Utente trovato: ${userId} per Chat ID: ${chatId}`);
 
     // Gestisci comandi
     if (text.startsWith('/start') || text.startsWith('/help')) {
