@@ -606,7 +606,30 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
 
         <button 
           onClick={() => {
-            const payload = { ...form, name: normalizeText(form.name || ''), id: editingId || Math.random().toString(36).substr(2,9) } as SubRecipe;
+            // Calcola initialWeight e yieldWeight se non sono già calcolati
+            const calculatedInitialWeight = form.components?.reduce((acc, comp) => {
+              return acc + (comp.quantity / 1000); // converte da grammi a kg
+            }, 0) || 0;
+            
+            const finalInitialWeight = form.initialWeight > 0 ? form.initialWeight : calculatedInitialWeight;
+            const finalYieldWeight = form.yieldWeight > 0 ? form.yieldWeight : (finalInitialWeight * (1 - wastePercentage / 100));
+            
+            const payload = { 
+              ...form, 
+              name: normalizeText(form.name || ''), 
+              id: editingId || Math.random().toString(36).substr(2,9),
+              initialWeight: finalInitialWeight,
+              yieldWeight: finalYieldWeight > 0 ? finalYieldWeight : finalInitialWeight
+            } as SubRecipe;
+            
+            console.log('[LabView] Salvataggio ricetta:', {
+              name: payload.name,
+              components: payload.components?.length || 0,
+              initialWeight: payload.initialWeight,
+              yieldWeight: payload.yieldWeight,
+              wastePercentage
+            });
+            
             if (editingId) onUpdate(payload); else onAdd(payload);
             setCreationMode(null); setEditingId(null); setIsAddingNewCategoryForm(false);
           }} 
