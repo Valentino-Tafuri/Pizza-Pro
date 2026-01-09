@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { 
   User, ShieldCheck, Mail, Phone, Lock, ChevronRight, Save, 
-  Loader2, LogOut, CheckCircle2, AlertTriangle, Key
+  Loader2, LogOut, CheckCircle2, AlertTriangle, Key, MessageSquare
 } from 'lucide-react';
 import { auth } from '../../firebase';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
@@ -91,6 +91,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userData, onUpdate, onSignOut
                 <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
                 <input className="w-full bg-gray-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold" value={userData.phone} onChange={e => onUpdate({ phone: e.target.value })} />
               </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-300 uppercase px-2">Telegram Chat ID</label>
+              <div className="relative">
+                <MessageSquare size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
+                <input 
+                  className="w-full bg-gray-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold" 
+                  placeholder="Inserisci il tuo Chat ID Telegram"
+                  value={userData.telegramChatId || ''} 
+                  onChange={e => onUpdate({ telegramChatId: e.target.value })} 
+                />
+              </div>
+              <p className="text-[10px] text-gray-400 font-bold px-2 mt-1">
+                Per ottenere il tuo Chat ID, avvia una conversazione con il bot e usa /start
+              </p>
             </div>
           </div>
         </section>
