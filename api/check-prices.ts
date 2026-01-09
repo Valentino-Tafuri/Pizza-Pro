@@ -79,10 +79,11 @@ ${emoji} *${direction} PREZZO*
 
 // Funzione per ottenere fatture recenti da Fatture in Cloud
 async function getRecentInvoices(): Promise<FatturaInCloudDocument[]> {
-  const token = process.env.FATTUREINCLOUD_TOKEN;
+  // Supporta sia OAuth (ACCESS_TOKEN) che Token Personale (TOKEN)
+  const token = process.env.FATTUREINCLOUD_ACCESS_TOKEN || process.env.FATTUREINCLOUD_TOKEN;
 
   if (!token) {
-    throw new Error('FATTUREINCLOUD_TOKEN non configurato');
+    throw new Error('FATTUREINCLOUD_ACCESS_TOKEN o FATTUREINCLOUD_TOKEN non configurato');
   }
 
   // Ottieni fatture degli ultimi 7 giorni
