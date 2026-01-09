@@ -320,6 +320,30 @@ async function handleRicercaCommand(uid: string, chatId: number, searchTerm: str
 
 // Handler principale
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Endpoint di test GET per verificare la configurazione
+  if (req.method === 'GET' && req.query.test === 'true') {
+    try {
+      const chatId = req.query.chatId ? Number(req.query.chatId) : 7457662742;
+      const userId = await getUserIdFromTelegramChatId(chatId);
+      
+      return res.status(200).json({
+        chatId: chatId,
+        userId: userId,
+        found: !!userId,
+        firebaseInitialized: !!db,
+        message: userId 
+          ? `✅ Utente trovato: ${userId}` 
+          : '❌ Utente non trovato. Verifica che il Chat ID sia salvato in Firebase.'
+      });
+    } catch (error) {
+      return res.status(500).json({
+        error: 'Errore test',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+    }
+  }
+
   // Verifica metodo POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
