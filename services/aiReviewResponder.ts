@@ -66,8 +66,14 @@ IMPORTANTE: Genera SOLO il testo della risposta, senza introduzioni o spiegazion
       keyPoints,
       sentiment: review.rating >= 4 ? 'positive' : review.rating === 3 ? 'neutral' : 'negative'
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI Response Generation Error:', error);
+    const errorMsg = error?.message || error?.toString() || 'Errore sconosciuto';
+    
+    // Log specifico per limiti API
+    if (errorMsg.includes('quota') || errorMsg.includes('limit') || errorMsg.includes('rate limit') || errorMsg.includes('429')) {
+      console.warn('⚠️ Limite API Gemini raggiunto - usando risposta fallback');
+    }
     
     // Fallback response
     return {

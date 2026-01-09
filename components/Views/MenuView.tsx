@@ -156,8 +156,19 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
       } else {
         setCreationMode('manual');
       }
-    } catch (err) {
-      alert("Errore AI. Controlla la connessione o l'API_KEY.");
+    } catch (err: any) {
+      console.error('AI Error:', err);
+      const errorMsg = err?.message || err?.toString() || 'Errore sconosciuto';
+      
+      if (errorMsg.includes('API_KEY') || errorMsg.includes('API key') || errorMsg.includes('authentication')) {
+        alert("❌ Errore API Key Gemini!\n\nVerifica che GEMINI_API_KEY sia configurata correttamente nel file .env.local");
+      } else if (errorMsg.includes('quota') || errorMsg.includes('limit') || errorMsg.includes('rate limit') || errorMsg.includes('429')) {
+        alert("⚠️ LIMITE API RAGGIUNTO\n\nHai superato il limite di richieste API di Google Gemini.\n\nSoluzioni:\n• Attendi qualche ora (limite giornaliero)\n• Attendi fino al prossimo mese (limite mensile)\n• Considera di aggiornare il piano Google Cloud\n\nNel frattempo, puoi creare le ricette manualmente.");
+      } else if (errorMsg.includes('503') || errorMsg.includes('service unavailable')) {
+        alert("⚠️ Servizio temporaneamente non disponibile\n\nIl servizio Gemini è temporaneamente sovraccarico. Riprova tra qualche minuto.");
+      } else {
+        alert(`Errore AI: ${errorMsg}\n\nRiprova o controlla la connessione.`);
+      }
     } finally {
       setAiLoading(false);
     }

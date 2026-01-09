@@ -187,10 +187,13 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
     } catch (err: any) {
       console.error('AI Error:', err);
       const errorMsg = err?.message || err?.toString() || 'Errore sconosciuto';
+      
       if (errorMsg.includes('API_KEY') || errorMsg.includes('API key') || errorMsg.includes('authentication')) {
         alert("❌ Errore API Key Gemini!\n\nVerifica che GEMINI_API_KEY sia configurata correttamente nel file .env.local");
-      } else if (errorMsg.includes('quota') || errorMsg.includes('limit')) {
-        alert("⚠️ Limite API raggiunto!\n\nHai superato il limite di richieste. Riprova più tardi.");
+      } else if (errorMsg.includes('quota') || errorMsg.includes('limit') || errorMsg.includes('rate limit') || errorMsg.includes('429')) {
+        alert("⚠️ LIMITE API RAGGIUNTO\n\nHai superato il limite di richieste API di Google Gemini.\n\nSoluzioni:\n• Attendi qualche ora (limite giornaliero)\n• Attendi fino al prossimo mese (limite mensile)\n• Considera di aggiornare il piano Google Cloud\n\nNel frattempo, puoi creare le ricette manualmente.");
+      } else if (errorMsg.includes('503') || errorMsg.includes('service unavailable')) {
+        alert("⚠️ Servizio temporaneamente non disponibile\n\nIl servizio Gemini è temporaneamente sovraccarico. Riprova tra qualche minuto.");
       } else {
         alert(`Errore AI: ${errorMsg}\n\nRiprova o controlla la connessione.`);
       }
@@ -224,8 +227,17 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
       });
 
       setForm(prev => ({ ...prev, procedure: response.text }));
-    } catch (err) {
-      alert("Errore nella generazione del procedimento.");
+    } catch (err: any) {
+      console.error('AI Procedure Error:', err);
+      const errorMsg = err?.message || err?.toString() || 'Errore sconosciuto';
+      
+      if (errorMsg.includes('quota') || errorMsg.includes('limit') || errorMsg.includes('rate limit') || errorMsg.includes('429')) {
+        alert("⚠️ LIMITE API RAGGIUNTO\n\nHai superato il limite di richieste API di Google Gemini.\n\nSoluzioni:\n• Attendi qualche ora (limite giornaliero)\n• Attendi fino al prossimo mese (limite mensile)\n• Considera di aggiornare il piano Google Cloud\n\nNel frattempo, puoi scrivere il procedimento manualmente.");
+      } else if (errorMsg.includes('503') || errorMsg.includes('service unavailable')) {
+        alert("⚠️ Servizio temporaneamente non disponibile\n\nIl servizio Gemini è temporaneamente sovraccarico. Riprova tra qualche minuto.");
+      } else {
+        alert(`Errore nella generazione del procedimento: ${errorMsg}\n\nPuoi scrivere il procedimento manualmente.`);
+      }
     } finally {
       setProcLoading(false);
     }
