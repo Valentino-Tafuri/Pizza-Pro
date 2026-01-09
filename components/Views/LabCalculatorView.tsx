@@ -169,7 +169,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
     shapeTemp: 'T.A.',
     shapeProcedure: 'Formare i panetti nella forma finale. Sistemare su teglia o cestino.',
     // Cottura
-    cookingTime: '60-90',
+    cookingTime: '10-15',
     cookingTemp: '450-480',
     cookingProcedure: 'Cuocere in forno preriscaldato fino a doratura uniforme.'
   });
@@ -1338,13 +1338,13 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1">
-                    <Clock size={12} /> Tempo (secondi)
+                    <Clock size={12} /> Tempo (minuti)
                   </label>
                   <input
                     type="text"
                     value={manualManagement.cookingTime}
                     onChange={(e) => setManualManagement({ ...manualManagement, cookingTime: e.target.value })}
-                    placeholder="es: 60-90"
+                    placeholder="es: 10-15"
                     className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold"
                   />
                 </div>

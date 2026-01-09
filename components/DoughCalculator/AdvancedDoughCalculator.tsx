@@ -219,7 +219,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
   const [shapeProcedure, setShapeProcedure] = useState<string>(initialData?.shapeProcedure ?? 'Formare i panetti nella forma finale. Sistemare su teglia o cestino.');
 
   // Cottura
-  const [cookingTime, setCookingTime] = useState<string>(initialData?.cookingTime ?? '60-90');
+  const [cookingTime, setCookingTime] = useState<string>(initialData?.cookingTime ?? '10-15');
   const [cookingTemp, setCookingTemp] = useState<string>(initialData?.cookingTemp ?? '450-480');
   const [cookingProcedure, setCookingProcedure] = useState<string>(initialData?.cookingProcedure ?? 'Cuocere in forno preriscaldato fino a doratura uniforme.');
 
@@ -1379,12 +1379,12 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
-              <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (secondi)</label>
+              <label className="text-xs font-bold text-gray-500 mb-1 block">Tempo (minuti)</label>
               <input
                 type="text"
                 value={cookingTime}
                 onChange={(e) => setCookingTime(e.target.value)}
-                placeholder="es: 60-90"
+                placeholder="es: 10-15"
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold"
               />
             </div>
