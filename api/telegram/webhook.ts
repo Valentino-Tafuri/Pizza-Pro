@@ -2,30 +2,41 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
 
 // Inizializza Firebase Admin (se non già inizializzato)
-let db: admin.firestore.Firestore;
+let db: admin.firestore.Firestore | null = null;
 
 try {
-  if (!admin.apps.length) {
+  const apps = admin.apps || [];
+  if (apps.length === 0) {
     // Prova con credenziali da variabili d'ambiente (se disponibili)
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: 'pizza-pro-tafuri'
-      });
+      try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          projectId: 'pizza-pro-tafuri'
+        });
+        console.log('[Telegram] Firebase Admin inizializzato con Service Account');
+      } catch (parseError) {
+        console.error('[Telegram] Errore parsing Service Account:', parseError);
+        // Prova senza credenziali
+        admin.initializeApp({
+          projectId: 'pizza-pro-tafuri'
+        });
+        console.log('[Telegram] Firebase Admin inizializzato senza credenziali (fallback)');
+      }
     } else {
       // Fallback: inizializza senza credenziali (funziona solo se le regole Firebase lo permettono)
       admin.initializeApp({
         projectId: 'pizza-pro-tafuri'
       });
+      console.log('[Telegram] Firebase Admin inizializzato senza credenziali');
     }
   }
   db = admin.firestore();
   console.log('[Telegram] Firebase Admin inizializzato correttamente');
 } catch (error) {
   console.error('[Telegram] Errore inizializzazione Firebase Admin:', error);
-  // Fallback: usa Firestore REST API se Admin SDK non funziona
-  db = null as any;
+  db = null;
 }
 
 interface TelegramUpdate {
@@ -59,7 +70,7 @@ async function sendTelegramMessage(chatId: number, text: string): Promise<void> 
   }
 }
 
-// Trova user_id dal chat_id Telegram usando Firestore REST API
+// Trova user_id dal chat_id Telegram
 async function getUserIdFromTelegramChatId(chatId: number): Promise<string | null> {
   try {
     const chatIdStr = chatId.toString();
@@ -67,61 +78,17 @@ async function getUserIdFromTelegramChatId(chatId: number): Promise<string | nul
     
     console.log(`[Telegram] Cercando Chat ID: ${chatId} (stringa: "${chatIdStr}", numero: ${chatIdNum})`);
     
-    // Usa Firestore REST API invece di Admin SDK
-    const projectId = 'pizza-pro-tafuri';
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
-    
-    console.log(`[Telegram] Chiamata Firestore REST API: ${url}`);
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      console.error(`[Telegram] Errore Firestore API: ${response.status} ${response.statusText}`);
-      // Se Firebase Admin è disponibile, prova con quello
-      if (db) {
-        console.log(`[Telegram] Fallback a Firebase Admin SDK...`);
-        return await getUserIdFromFirebaseAdmin(chatId);
-      }
-      return null;
+    // Prova prima con Firebase Admin SDK se disponibile
+    if (db) {
+      console.log(`[Telegram] Usando Firebase Admin SDK...`);
+      return await getUserIdFromFirebaseAdmin(chatId);
     }
     
-    const data = await response.json();
-    const documents = data.documents || [];
-    
-    console.log(`[Telegram] Trovati ${documents.length} utenti totali`);
-    
-    for (const doc of documents) {
-      const userId = doc.name.split('/').pop();
-      const userData = doc.fields || {};
-      
-      // Estrai telegramChatId dai campi Firestore
-      const savedChatId = userData.telegramChatId?.stringValue || 
-                         userData.telegramChatId?.integerValue ||
-                         userData.telegramChatId?.doubleValue;
-      
-      if (savedChatId) {
-        const savedStr = String(savedChatId);
-        console.log(`[Telegram] Utente ${userId}: telegramChatId="${savedStr}"`);
-        
-        // Verifica se corrisponde
-        if (savedStr === chatIdStr || 
-            Number(savedStr) === chatIdNum ||
-            savedStr.trim() === chatIdStr) {
-          console.log(`[Telegram] ✅ Utente trovato: ${userId}`);
-          return userId;
-        }
-      }
-    }
-    
-    console.log(`[Telegram] ❌ Nessun utente trovato con Chat ID: ${chatId}`);
+    // Se Admin SDK non è disponibile, mostra errore
+    console.error('[Telegram] Firebase Admin SDK non disponibile. Configura FIREBASE_SERVICE_ACCOUNT su Vercel.');
     return null;
   } catch (error) {
     console.error('[Telegram] Errore ricerca user:', error);
-    // Fallback a Firebase Admin se disponibile
-    if (db) {
-      console.log(`[Telegram] Fallback a Firebase Admin SDK...`);
-      return await getUserIdFromFirebaseAdmin(chatId);
-    }
     return null;
   }
 }
