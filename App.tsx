@@ -20,11 +20,11 @@ import ScanView from './components/Views/ScanView';
 import StockAlerts from './components/StockAlerts';
 import PreparationSettingsView from './components/Views/PreparationSettingsView';
 import MarketingOverview from './components/Views/Marketing/MarketingOverview';
-import TripAdvisorView from './components/Views/Marketing/TripAdvisorView';
 import GoogleView from './components/Views/Marketing/GoogleView';
 import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
 import { generateReviewResponse } from './services/aiReviewResponder';
+import { MOCK_GOOGLE_CONNECTION } from './services/mockReviewsData';
 import { INITIAL_USER } from './constants';
 import { getActivePreparations, PreparationSettings } from './utils/preparationConverter';
 
@@ -47,10 +47,8 @@ const App: React.FC = () => {
   
   // Marketing & Reviews State
   const [platformConnections, setPlatformConnections] = useState<{
-    tripadvisor: PlatformConnection;
     google: PlatformConnection;
   }>({
-    tripadvisor: { id: 'tripadvisor-conn', platform: 'tripadvisor', isConnected: false },
     google: { id: 'google-conn', platform: 'google', isConnected: false }
   });
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -113,10 +111,8 @@ const App: React.FC = () => {
     const unsubMov = syncData(user.uid, 'stockMovements', setStockMovements);
     const unsubPlatformConn = syncData(user.uid, 'platformConnections', (data: PlatformConnection[]) => {
       console.log('[App] PlatformConnections sincronizzate:', data.length);
-      const taConn = data.find(c => c.platform === 'tripadvisor');
       const googleConn = data.find(c => c.platform === 'google');
       setPlatformConnections({
-        tripadvisor: taConn || MOCK_TRIPADVISOR_CONNECTION,
         google: googleConn || MOCK_GOOGLE_CONNECTION
       });
     });
@@ -454,14 +450,14 @@ const App: React.FC = () => {
   };
 
   const handleSyncReviews = async (platform: ReviewPlatform) => {
-    alert(`🔄 Sincronizzazione ${platform === 'tripadvisor' ? 'TripAdvisor' : 'Google'} in corso...\n\nNota: Per ora vengono usati dati mock. L'integrazione con le API reali sarà disponibile in futuro.`);
+    alert(`🔄 Sincronizzazione Google in corso...\n\nNota: Per ora vengono usati dati mock. L'integrazione con le API reali sarà disponibile in futuro.`);
   };
 
   const handleSaveBusinessConfig = async (config: any) => {
     await handleUpdateUserData({ businessConfig: config });
   };
 
-  const handleDisconnectPlatform = async (platform: 'tripadvisor' | 'google') => {
+  const handleDisconnectPlatform = async (platform: 'google') => {
     const disconnectedConnection: PlatformConnection = {
       id: `${platform}-conn`,
       platform,
@@ -656,34 +652,10 @@ const App: React.FC = () => {
         onGenerateLabels={handleGenerateLabels}
       />;
       case 'marketing-overview': return <MarketingOverview
-        tripAdvisorConnection={platformConnections.tripadvisor}
         googleConnection={platformConnections.google}
-        recentReviews={reviews.slice(0, 5)}
+        recentReviews={reviews.filter(r => r.platform === 'google').slice(0, 5)}
         overallStats={reviewStats}
-      />;
-      case 'marketing-tripadvisor': return <TripAdvisorView
-        connection={platformConnections.tripadvisor}
-        reviews={reviews.filter(r => r.platform === 'tripadvisor')}
-        businessConfig={userData.businessConfig}
-        onConnect={(restaurant) => handleConnectPlatform('tripadvisor', restaurant)}
-        onGenerateAIResponse={handleGenerateAIResponse}
-        onSaveReply={async (reviewId, reply) => {
-          const review = reviews.find(r => r.id === reviewId);
-          if (review) {
-            const replyAuthor = userData.businessConfig?.name ||
-              (userData.firstName ? `${userData.firstName}'s Restaurant` : 'Il Ristorante');
-            const updated = {
-              ...review,
-              reply: {
-                text: reply,
-                date: new Date(),
-                author: replyAuthor
-              }
-            };
-            await handleSave('reviews', updated);
-            setReviews(prev => prev.map(r => r.id === reviewId ? updated : r));
-          }
-        }}
+        onSyncReviews={handleSyncReviews}
       />;
       case 'marketing-google': return <GoogleView
         connection={platformConnections.google}
@@ -747,7 +719,6 @@ const App: React.FC = () => {
       'profile': 'PROFILO UTENTE',
       'marketing': 'MARKETING',
       'marketing-overview': 'PANORAMICA',
-      'marketing-tripadvisor': 'TRIPADVISOR',
       'marketing-google': 'GOOGLE'
     };
     return titles[view] || view.toUpperCase();

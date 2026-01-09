@@ -42,7 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
 
   // Auto-expand marketing menu when a sub-section is active
   useEffect(() => {
-    if (activeView === 'marketing-overview' || activeView === 'marketing-tripadvisor' || activeView === 'marketing-google') {
+    if (activeView === 'marketing-overview' || activeView === 'marketing-google') {
       setIsMarketingExpanded(true);
     } else if (activeView !== 'marketing') {
       setIsMarketingExpanded(false);
@@ -87,7 +87,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
           hasSubmenu: true,
           subItems: [
             { id: 'marketing-overview' as ViewType, label: 'Panoramica', icon: TrendingUp },
-            { id: 'marketing-tripadvisor' as ViewType, label: 'TripAdvisor', icon: MapPin },
             { id: 'marketing-google' as ViewType, label: 'Google', icon: Star },
           ]
         },
@@ -139,7 +138,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
                   const isSettingsSubActive = activeView === 'settings-prefermenti' || activeView === 'settings-assets' || activeView === 'settings-staff' || activeView === 'settings-suppliers' || activeView === 'profile';
                   const isInventarioSubActive = activeView === 'prep-settings' || activeView === 'warehouse' || activeView === 'fifo-labels' || activeView === 'custom-labels' || activeView === 'scan' ||
                     activeView === 'inventario-magazzino' || activeView === 'inventario-etichette' || activeView === 'inventario-scan';
-                  const isMarketingSubActive = activeView === 'marketing-overview' || activeView === 'marketing-tripadvisor' || activeView === 'marketing-google';
+                  const isMarketingSubActive = activeView === 'marketing-overview' || activeView === 'marketing-google';
                   const isActive = activeView === item.id || (item.hasSubmenu && item.id === 'settings' && isSettingsSubActive) || (item.hasSubmenu && item.id === 'inventario' && isInventarioSubActive) || (item.hasSubmenu && item.id === 'marketing' && isMarketingSubActive);
                   const isExpanded = item.hasSubmenu && (
                     (item.id === 'settings' && (isSettingsExpanded || isSettingsSubActive)) ||

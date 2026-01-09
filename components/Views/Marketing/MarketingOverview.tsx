@@ -4,7 +4,6 @@ import { PlatformConnection, Review, ReviewStats, ReviewPlatform } from '../../.
 import RankingIndicator from '../../Marketing/RankingIndicator';
 
 interface MarketingOverviewProps {
-  tripAdvisorConnection: PlatformConnection;
   googleConnection: PlatformConnection;
   recentReviews: Review[];
   overallStats: ReviewStats;
@@ -12,7 +11,6 @@ interface MarketingOverviewProps {
 }
 
 const MarketingOverview: React.FC<MarketingOverviewProps> = ({
-  tripAdvisorConnection,
   googleConnection,
   recentReviews,
   overallStats,
@@ -46,50 +44,7 @@ const MarketingOverview: React.FC<MarketingOverviewProps> = ({
   return (
     <div className="space-y-6">
       {/* Platform Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* TripAdvisor Card */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="bg-green-600 rounded-lg p-2">
-                <span className="text-white font-black text-xs">TA</span>
-              </div>
-              <span className="text-sm font-black text-gray-700">TripAdvisor</span>
-            </div>
-            {tripAdvisorConnection.isConnected && (
-              <span className="text-xs font-bold text-green-700 bg-green-200 px-2 py-1 rounded-full">
-                Connesso
-              </span>
-            )}
-          </div>
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              {renderStars(Math.round(tripAdvisorConnection.averageRating || 0))}
-              <span className="text-2xl font-black text-black">
-                {tripAdvisorConnection.averageRating?.toFixed(1) || '0.0'}
-              </span>
-            </div>
-            <p className="text-xs font-semibold text-gray-600">
-              {tripAdvisorConnection.totalReviews || 0} recensioni
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onSyncReviews('tripadvisor')}
-              className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white rounded-xl py-2 px-4 text-xs font-black transition-all active:scale-95"
-            >
-              <RefreshCw size={14} />
-              Sincronizza
-            </button>
-            <button
-              onClick={() => window.open('https://www.tripadvisor.com', '_blank')}
-              className="flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 rounded-xl py-2 px-4 text-xs font-black transition-all active:scale-95"
-            >
-              <ExternalLink size={14} />
-            </button>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Google Card */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
@@ -257,10 +212,8 @@ const MarketingOverview: React.FC<MarketingOverviewProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                      review.platform === 'tripadvisor' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {review.platform === 'tripadvisor' ? 'TA' : 'G'}
+                    <span className="text-xs font-bold px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                      Google
                     </span>
                     <span className="text-xs font-semibold text-gray-500">
                       {timeAgo === 0 ? 'Oggi' : `${timeAgo} g fa`}
