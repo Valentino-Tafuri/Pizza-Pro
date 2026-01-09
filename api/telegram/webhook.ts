@@ -2,17 +2,31 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
 
 // Inizializza Firebase Admin (se non già inizializzato)
-if (!admin.apps.length) {
-  try {
-    admin.initializeApp({
-      projectId: 'pizza-pro-tafuri'
-    });
-  } catch (error) {
-    console.error('Errore inizializzazione Firebase Admin:', error);
-  }
-}
+let db: admin.firestore.Firestore;
 
-const db = admin.firestore();
+try {
+  if (!admin.apps.length) {
+    // Prova con credenziali da variabili d'ambiente (se disponibili)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: 'pizza-pro-tafuri'
+      });
+    } else {
+      // Fallback: inizializza senza credenziali (funziona solo se le regole Firebase lo permettono)
+      admin.initializeApp({
+        projectId: 'pizza-pro-tafuri'
+      });
+    }
+  }
+  db = admin.firestore();
+  console.log('[Telegram] Firebase Admin inizializzato correttamente');
+} catch (error) {
+  console.error('[Telegram] Errore inizializzazione Firebase Admin:', error);
+  // Fallback: usa Firestore REST API se Admin SDK non funziona
+  db = null as any;
+}
 
 interface TelegramUpdate {
   message?: {
@@ -48,9 +62,17 @@ async function sendTelegramMessage(chatId: number, text: string): Promise<void> 
 // Trova user_id dal chat_id Telegram
 async function getUserIdFromTelegramChatId(chatId: number): Promise<string | null> {
   try {
+    if (!db) {
+      console.error('[Telegram] Firebase Admin non inizializzato');
+      return null;
+    }
+
     // Cerca in tutti gli utenti chi ha questo chat_id configurato
     const usersRef = db.collection('users');
+    console.log(`[Telegram] Accesso a collection 'users'...`);
+    
     const usersSnapshot = await usersRef.get();
+    console.log(`[Telegram] Trovati ${usersSnapshot.docs.length} utenti totali`);
     
     const chatIdStr = chatId.toString();
     const chatIdNum = chatId;
@@ -61,7 +83,7 @@ async function getUserIdFromTelegramChatId(chatId: number): Promise<string | nul
       const userData = userDoc.data();
       const savedChatId = userData.telegramChatId;
       
-      // Log per debug
+      // Log per debug - mostra tutti gli utenti con Chat ID configurato
       if (savedChatId) {
         console.log(`[Telegram] Utente ${userDoc.id}: telegramChatId="${savedChatId}" (tipo: ${typeof savedChatId})`);
       }
@@ -79,9 +101,11 @@ async function getUserIdFromTelegramChatId(chatId: number): Promise<string | nul
     }
     
     console.log(`[Telegram] ❌ Nessun utente trovato con Chat ID: ${chatId}`);
+    console.log(`[Telegram] Debug: Chat ID cercato come stringa="${chatIdStr}", numero=${chatIdNum}`);
     return null;
   } catch (error) {
     console.error('[Telegram] Errore ricerca user:', error);
+    console.error('[Telegram] Stack trace:', error instanceof Error ? error.stack : 'N/A');
     return null;
   }
 }
