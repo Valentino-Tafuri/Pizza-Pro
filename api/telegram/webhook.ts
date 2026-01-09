@@ -53,16 +53,36 @@ async function getUserIdFromTelegramChatId(chatId: number): Promise<string | nul
     const usersRef = collection(db, 'users');
     const usersSnapshot = await getDocs(usersRef);
     
+    const chatIdStr = chatId.toString();
+    const chatIdNum = chatId;
+    
+    console.log(`[Telegram] Cercando Chat ID: ${chatId} (stringa: "${chatIdStr}", numero: ${chatIdNum})`);
+    
     for (const userDoc of usersSnapshot.docs) {
       const userData = userDoc.data();
-      // Verifica se l'utente ha configurato il chat_id
-      if (userData.telegramChatId === chatId.toString() || userData.telegramChatId === chatId) {
+      const savedChatId = userData.telegramChatId;
+      
+      // Log per debug
+      if (savedChatId) {
+        console.log(`[Telegram] Utente ${userDoc.id}: telegramChatId="${savedChatId}" (tipo: ${typeof savedChatId})`);
+      }
+      
+      // Verifica se l'utente ha configurato il chat_id (confronta come stringa e numero)
+      if (savedChatId && (
+        savedChatId === chatIdStr || 
+        savedChatId === chatIdNum ||
+        String(savedChatId).trim() === chatIdStr ||
+        Number(savedChatId) === chatIdNum
+      )) {
+        console.log(`[Telegram] ✅ Utente trovato: ${userDoc.id}`);
         return userDoc.id;
       }
     }
+    
+    console.log(`[Telegram] ❌ Nessun utente trovato con Chat ID: ${chatId}`);
     return null;
   } catch (error) {
-    console.error('Errore ricerca user:', error);
+    console.error('[Telegram] Errore ricerca user:', error);
     return null;
   }
 }

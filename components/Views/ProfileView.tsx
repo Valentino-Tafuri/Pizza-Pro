@@ -100,12 +100,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userData, onUpdate, onSignOut
                   className="w-full bg-gray-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold" 
                   placeholder="Inserisci il tuo Chat ID Telegram"
                   value={userData.telegramChatId || ''} 
-                  onChange={e => onUpdate({ telegramChatId: e.target.value })} 
+                  onChange={e => onUpdate({ telegramChatId: e.target.value.trim() })} 
                 />
               </div>
               <p className="text-[10px] text-gray-400 font-bold px-2 mt-1">
                 Per ottenere il tuo Chat ID, avvia una conversazione con il bot e usa /start
               </p>
+              {userData.telegramChatId && (
+                <p className="text-[10px] text-green-500 font-bold px-2 mt-1">
+                  ✓ Chat ID configurato: {userData.telegramChatId}
+                </p>
+              )}
             </div>
           </div>
         </section>
