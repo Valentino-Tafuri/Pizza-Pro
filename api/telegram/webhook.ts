@@ -1,19 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import * as admin from 'firebase-admin';
 
-// Firebase config (stesso del client)
-const firebaseConfig = {
-  apiKey: "AIzaSyARrF_NeAfAsOqyHIMTlpSkNupaDZFOsao",
-  authDomain: "pizza-pro-tafuri.firebaseapp.com",
-  projectId: "pizza-pro-tafuri",
-  storageBucket: "pizza-pro-tafuri.firebasestorage.app",
-  messagingSenderId: "744087680274",
-  appId: "1:744087680274:web:2ea28748ba6ec4b12fefcb"
-};
+// Inizializza Firebase Admin (se non già inizializzato)
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      projectId: 'pizza-pro-tafuri'
+    });
+  } catch (error) {
+    console.error('Errore inizializzazione Firebase Admin:', error);
+  }
+}
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = admin.firestore();
 
 interface TelegramUpdate {
   message?: {
@@ -50,8 +49,8 @@ async function sendTelegramMessage(chatId: number, text: string): Promise<void> 
 async function getUserIdFromTelegramChatId(chatId: number): Promise<string | null> {
   try {
     // Cerca in tutti gli utenti chi ha questo chat_id configurato
-    const usersRef = collection(db, 'users');
-    const usersSnapshot = await getDocs(usersRef);
+    const usersRef = db.collection('users');
+    const usersSnapshot = await usersRef.get();
     
     const chatIdStr = chatId.toString();
     const chatIdNum = chatId;
@@ -90,8 +89,8 @@ async function getUserIdFromTelegramChatId(chatId: number): Promise<string | nul
 // Leggi dati da Firebase
 async function getData(uid: string, collectionName: string): Promise<any[]> {
   try {
-    const colRef = collection(db, `users/${uid}/${collectionName}`);
-    const snapshot = await getDocs(colRef);
+    const colRef = db.collection(`users/${uid}/${collectionName}`);
+    const snapshot = await colRef.get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error(`Errore lettura ${collectionName}:`, error);
