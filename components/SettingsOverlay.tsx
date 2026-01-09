@@ -5,7 +5,7 @@ import {
   Wallet, ChevronRight, Activity, Percent, Calculator, Info,
   Briefcase, Euro, Clock, MapPin, AlertTriangle, Edit2, Save,
   CheckCircle2, Home, Phone, Package, Lock, Mail, ShieldCheck, Loader2,
-  TrendingUp, Target
+  TrendingUp, Target, MessageSquare
 } from 'lucide-react';
 import { auth } from '../firebase';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
@@ -280,6 +280,21 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
               onChange={e => onUpdateUserData?.({ phone: e.target.value })} 
             />
           </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[9px] font-black text-gray-300 uppercase px-2">Telegram Chat ID</label>
+          <div className="relative">
+            <MessageSquare size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
+            <input 
+              className="w-full bg-gray-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold" 
+              placeholder="Inserisci il tuo Chat ID Telegram"
+              value={userData.telegramChatId || ''} 
+              onChange={e => onUpdateUserData?.({ telegramChatId: e.target.value })} 
+            />
+          </div>
+          <p className="text-[10px] text-gray-400 font-bold px-2 mt-1">
+            Per ottenere il tuo Chat ID, avvia una conversazione con il bot e usa /start
+          </p>
         </div>
       </div>
 

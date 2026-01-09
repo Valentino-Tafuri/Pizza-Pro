@@ -83,6 +83,7 @@ export interface UserData {
   foodCostThreshold: number;
   bepConfig: BepConfig;
   businessConfig?: BusinessConfig;
+  telegramChatId?: string; // Chat ID Telegram per notifiche bot
 }
 
 export interface Ingredient {

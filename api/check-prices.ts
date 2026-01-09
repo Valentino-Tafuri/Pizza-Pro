@@ -86,6 +86,14 @@ async function getRecentInvoices(): Promise<FatturaInCloudDocument[]> {
     throw new Error('FATTUREINCLOUD_ACCESS_TOKEN o FATTUREINCLOUD_TOKEN non configurato');
   }
 
+  // Verifica che il token non sia vuoto o solo spazi
+  const cleanToken = token.trim();
+  if (!cleanToken || cleanToken.length === 0) {
+    throw new Error('Token vuoto o non valido. Verifica la variabile d\'ambiente su Vercel.');
+  }
+
+  console.log(`[CheckPrices] Token trovato (lunghezza: ${cleanToken.length} caratteri)`);
+
   // Ottieni fatture degli ultimi 7 giorni
   const today = new Date();
   const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -94,15 +102,61 @@ async function getRecentInvoices(): Promise<FatturaInCloudDocument[]> {
 
   try {
     // Prima ottieni la company_id
+    // NOTA: Per token personale, l'endpoint potrebbe essere diverso o richiedere un formato diverso
+    console.log('[CheckPrices] Richiesta companies...');
+    
     const companiesResponse = await fetch('https://api-v2.fattureincloud.it/user/companies', {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json'
+        'Authorization': `Bearer ${cleanToken}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       }
     });
 
+    const companiesResponseText = await companiesResponse.text();
+    console.log(`[CheckPrices] Companies response status: ${companiesResponse.status}`);
+    console.log(`[CheckPrices] Companies response body: ${companiesResponseText.substring(0, 500)}`);
+
     if (!companiesResponse.ok) {
-      throw new Error(`Errore API companies: ${companiesResponse.status}`);
+      let errorDetails = `Errore API companies: ${companiesResponse.status}`;
+      try {
+        const errorJson = JSON.parse(companiesResponseText);
+        errorDetails += ` - ${errorJson.error || errorJson.error_description || errorJson.message || JSON.stringify(errorJson)}`;
+      } catch {
+        errorDetails += ` - ${companiesResponseText.substring(0, 200)}`;
+      }
+      
+      // Messaggi di aiuto specifici per 401 secondo documentazione ufficiale
+      // https://developers.fattureincloud.it/docs/authentication/manual-authentication/
+      if (companiesResponse.status === 401) {
+        errorDetails += '\n\n🔍 GUIDA RISOLUZIONE (secondo documentazione ufficiale):\n\n';
+        errorDetails += '1. VERIFICA IL TOKEN:\n';
+        errorDetails += '   - Vai su Fatture in Cloud → Impostazioni → Applicazioni collegate\n';
+        errorDetails += '   - Clicca su "Gestisci" accanto alla tua app\n';
+        errorDetails += '   - Copia il token completo (inizia con "a/")\n';
+        errorDetails += '   - Verifica che non ci siano spazi all\'inizio/fine\n\n';
+        errorDetails += '2. VERIFICA I PERMESSI DEL TOKEN:\n';
+        errorDetails += '   - Clicca su "Modifica" accanto ai permessi\n';
+        errorDetails += '   - Seleziona OBBLIGATORIAMENTE:\n';
+        errorDetails += '     ✓ situation:r (accesso dashboard/company)\n';
+        errorDetails += '     ✓ received_documents:r (lettura documenti ricevuti)\n';
+        errorDetails += '   - Salva le modifiche\n\n';
+        errorDetails += '3. VERIFICA LE AZIENDE:\n';
+        errorDetails += '   - Assicurati di aver selezionato la company corretta quando hai generato il token\n';
+        errorDetails += '   - Il token funziona solo per le aziende selezionate\n\n';
+        errorDetails += '4. SE SEI SUB-UTENTE (non admin):\n';
+        errorDetails += '   - L\'admin deve assegnarti i permessi in:\n';
+        errorDetails += '     Impostazioni → Utenti e Permessi\n';
+        errorDetails += '   - Devi avere accesso a "Fatture e Doc"\n\n';
+        errorDetails += '5. RIGENERA IL TOKEN (se necessario):\n';
+        errorDetails += '   - Elimina il token vecchio\n';
+        errorDetails += '   - Genera un nuovo token con i permessi corretti\n';
+        errorDetails += '   - Aggiorna FATTUREINCLOUD_TOKEN su Vercel\n';
+        errorDetails += '   - Fai redeploy';
+      }
+      
+      throw new Error(errorDetails);
     }
 
     const companiesData = await companiesResponse.json();
@@ -113,21 +167,52 @@ async function getRecentInvoices(): Promise<FatturaInCloudDocument[]> {
     }
 
     // Poi ottieni le fatture passive (acquisti)
+    // L'API v2 di Fatture in Cloud richiede POST con body JSON
+    // Secondo la documentazione, il body deve contenere i filtri
+    const requestBody: any = {
+      type: 'invoice'
+    };
+    
+    // Aggiungi filtri data solo se specificati
+    if (dateFrom) {
+      requestBody.date_from = dateFrom;
+    }
+    if (dateTo) {
+      requestBody.date_to = dateTo;
+    }
+
+    console.log(`[CheckPrices] Richiesta fatture per company ${companyId}:`, JSON.stringify(requestBody));
+    console.log(`[CheckPrices] Date: ${dateFrom} - ${dateTo}`);
+
     const invoicesResponse = await fetch(
-      `https://api-v2.fattureincloud.it/c/${companyId}/received_documents?type=invoice&date_from=${dateFrom}&date_to=${dateTo}`,
+      `https://api-v2.fattureincloud.it/c/${companyId}/received_documents`,
       {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
+          'Authorization': `Bearer ${cleanToken}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
       }
     );
 
+    const responseText = await invoicesResponse.text();
+    console.log(`[CheckPrices] Response status: ${invoicesResponse.status}`);
+    console.log(`[CheckPrices] Response body: ${responseText.substring(0, 500)}`);
+
     if (!invoicesResponse.ok) {
-      throw new Error(`Errore API invoices: ${invoicesResponse.status}`);
+      let errorDetails = `Errore API invoices: ${invoicesResponse.status}`;
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorDetails += ` - ${errorJson.error || errorJson.error_description || errorJson.message || JSON.stringify(errorJson)}`;
+      } catch {
+        errorDetails += ` - ${responseText.substring(0, 200)}`;
+      }
+      throw new Error(errorDetails);
     }
 
-    const invoicesData = await invoicesResponse.json();
+    const invoicesData = JSON.parse(responseText);
     return invoicesData.data || [];
   } catch (error) {
     console.error('Errore fetch fatture:', error);
