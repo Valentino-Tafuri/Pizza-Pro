@@ -131,20 +131,28 @@ export function calculateAutolysis(
 
 /**
  * Calcola la chiusura dell'impasto
+ * IMPORTANTE: 
+ * - Le percentuali (sale, lievito, olio, malto) sono sempre sulla farina TOTALE
+ * - Solo il SALE viene sottratto dai pre-fermenti/autolisi (perché fa parte della ricetta finale)
+ * - Lievito, Olio e Malto NON vengono sottratti dai pre-fermenti (il lievito nel pre-fermento
+ *   è solo per la maturazione, non è parte del lievito totale della ricetta)
  */
 export function calculateClosure(
   remainingFlour: number,
   totalWater: number,
   prefermentWater: number,
   autolysisWater: number,
-  saltPercentage: number, // Sale totale ricetta
-  yeastPercentage: number,
-  oilPercentage: number,
-  maltPercentage: number,
+  saltPercentage: number, // Sale totale ricetta (sulla farina totale)
+  yeastPercentage: number, // Lievito totale ricetta (sulla farina totale) - NON sottrarre quello del pre-fermento
+  oilPercentage: number, // Olio totale ricetta (sulla farina totale)
+  maltPercentage: number, // Malto totale ricetta (sulla farina totale)
   additionalIngredients: AdditionalIngredient[],
   flourSelections: FlourSelection[],
-  baseFlourForIngredients?: number, // Base alternativa per calcolare sale, lievito, olio, malto
-  autolysisSaltPercentage: number = 0 // Percentuale sale nell'autolisi (da sottrarre dal totale)
+  totalFlour: number, // Farina totale (per calcolare le percentuali corrette)
+  prefermentSalt: number = 0, // Sale già usato nel pre-fermento (da sottrarre)
+  prefermentYeast: number = 0, // Lievito già usato nel pre-fermento (NON sottrarre - solo per debug)
+  autolysisSalt: number = 0, // Sale già usato nell'autolisi (da sottrarre)
+  prefermentMalt: number = 0 // Malto già usato nel pre-fermento (NON sottrarre - non usato)
 ): ClosureResult {
   // Acqua residua
   const water = totalWater - prefermentWater - autolysisWater;
@@ -157,26 +165,25 @@ export function calculateClosure(
       }))
     : [];
   
-  // Ingredienti base (percentuali sul totale farina)
-  // Se baseFlourForIngredients è fornito, usalo per calcolare sale, lievito, olio, malto
-  // Altrimenti usa remainingFlour
-  const baseFlour = baseFlourForIngredients !== undefined 
-    ? baseFlourForIngredients 
-    : Math.max(0, remainingFlour);
+  // Calcola il totale necessario sulla farina TOTALE
+  const totalSaltNeeded = (totalFlour * saltPercentage) / 100;
+  const totalYeastNeeded = (totalFlour * yeastPercentage) / 100;
+  const totalOilNeeded = (totalFlour * oilPercentage) / 100;
+  const totalMaltNeeded = (totalFlour * maltPercentage) / 100;
   
-  // Calcola sale: sottrae il sale dell'autolisi dal sale totale
-  // Il sale totale è quello impostato nella chiusura, ma parte di esso va nell'autolisi
-  const effectiveSaltPercentage = Math.max(0, saltPercentage - autolysisSaltPercentage);
-  const salt = (baseFlour * effectiveSaltPercentage) / 100;
-  const yeast = (baseFlour * yeastPercentage) / 100;
-  const oil = (baseFlour * oilPercentage) / 100;
-  const malt = (baseFlour * maltPercentage) / 100;
+  // IMPORTANTE: Solo il SALE viene sottratto dai pre-fermenti/autolisi
+  // Lievito, Olio e Malto sono calcolati sulla farina totale senza sottrarre
+  // quelli dei pre-fermenti (il lievito nel pre-fermento è solo per la maturazione,
+  // non fa parte del lievito totale della ricetta)
+  const salt = Math.max(0, totalSaltNeeded - prefermentSalt - autolysisSalt);
+  const yeast = totalYeastNeeded; // Lievito totale sulla farina totale, NON sottrarre quello del pre-fermento
+  const oil = totalOilNeeded; // Olio totale sulla farina totale
+  const malt = totalMaltNeeded; // Malto totale sulla farina totale
   
   // Ingredienti aggiuntivi (percentuali sul totale farina)
-  // Usa la stessa baseFlour usata per sale, lievito, olio, malto
   const additionalIngredientAmounts = additionalIngredients.map(ing => ({
     ingredientId: ing.id,
-    amount: (baseFlour * ing.percentage) / 100
+    amount: (totalFlour * ing.percentage) / 100
   }));
   
   return {

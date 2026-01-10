@@ -420,6 +420,10 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
     maltPercentage,
     additionalIngredients,
     closureFlourSelections,
+    selectedSaltId,
+    selectedYeastId,
+    selectedOilId,
+    selectedMaltId,
     ingredients
   });
 
@@ -1419,6 +1423,11 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
             ingredients={ingredients}
             portionWeight={portionWeight}
             multiplier={multiplier}
+            selectedSaltId={selectedSaltId}
+            selectedYeastId={selectedYeastId}
+            selectedOilId={selectedOilId}
+            selectedMaltId={selectedMaltId}
+            selectedWaterId={selectedWaterId}
           />
           
           {/* Feedback per azioni disabilitate */}

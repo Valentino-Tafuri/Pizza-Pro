@@ -42,6 +42,12 @@ interface UseDoughCalculationsParams {
   additionalIngredients: AdditionalIngredient[];
   closureFlourSelections: FlourSelection[];
   
+  // ID ingredienti selezionati (per calcolo costi)
+  selectedSaltId?: string | null;
+  selectedYeastId?: string | null;
+  selectedOilId?: string | null;
+  selectedMaltId?: string | null;
+  
   // Dati esterni
   ingredients: Ingredient[];
 }
@@ -70,6 +76,10 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
     yeastPercentage,
     oilPercentage,
     maltPercentage,
+    selectedSaltId,
+    selectedYeastId,
+    selectedOilId,
+    selectedMaltId,
     ingredients
   } = params;
 
@@ -100,7 +110,6 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
     // 1. Calcola pre-fermento
     let prefermentFlour = 0;
     let prefermentWater = 0;
-    let prefermentYeast = 0;
     
     if (usePreferment && selectedPreferment) {
       prefermentResult = calculatePreferment(
@@ -112,7 +121,6 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
       );
       prefermentFlour = prefermentResult.flour;
       prefermentWater = prefermentResult.water;
-      prefermentYeast = prefermentResult.yeast;
     }
     
     // 2. Calcola autolisi (percentuale sulla farina TOTALE, non sulla rimanente)
@@ -139,31 +147,32 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
       remainingFlourForClosure = 0; // Previene calcoli con valori negativi
     }
     
-    // Se remainingFlourForClosure è 0 o negativo, usa flourTotal come base per calcolare
-    // sale, lievito, olio, malto (per evitare valori 0 quando le percentuali sono impostate)
-    // Questo gestisce il caso in cui tutta la farina è usata in pre-fermento/autolisi
-    // ma comunque vogliamo calcolare gli ingredienti della chiusura
-    const baseFlourForClosureIngredients = remainingFlourForClosure > 0 
-      ? remainingFlourForClosure 
-      : flourTotal;
+    // Prepara i valori degli ingredienti già usati nel pre-fermento e nell'autolisi
+    const prefermentSalt = prefermentResult?.salt || 0;
+    const prefermentYeast = prefermentResult?.yeast || 0;
+    const autolysisSalt = autolysisResult?.salt || 0;
+    // Nota: il malto non viene tipicamente usato nel pre-fermento, ma se necessario può essere aggiunto
+    const prefermentMalt = 0; // Attualmente non gestito nel pre-fermento
     
     // 4. Calcola chiusura
-    // Usa remainingFlourForClosure per le farine, ma baseFlourForClosureIngredients
-    // per sale, lievito, olio, malto se remainingFlourForClosure è 0
-    // Passa anche autolysisSaltPercentage per sottrarlo dal sale totale
+    // IMPORTANTE: Le percentuali (sale, lievito, olio, malto) sono sulla farina TOTALE.
+    // Il calcolo sottrae automaticamente gli ingredienti già usati nel pre-fermento e nell'autolisi.
     const closureResult = calculateClosure(
       remainingFlourForClosure,
       totalWater,
       prefermentWater,
       autolysisWater,
-      saltPercentage, // Sale totale ricetta
-      yeastPercentage,
-      oilPercentage,
-      maltPercentage,
+      saltPercentage, // Sale totale ricetta (sulla farina totale)
+      yeastPercentage, // Lievito totale ricetta (sulla farina totale)
+      oilPercentage, // Olio totale ricetta (sulla farina totale)
+      maltPercentage, // Malto totale ricetta (sulla farina totale)
       additionalIngredients,
       closureFlourSelections,
-      baseFlourForClosureIngredients, // Base per calcolare sale, lievito, olio, malto
-      autolysisSaltPercentage // Sale nell'autolisi da sottrarre
+      flourTotal, // Farina totale (per calcolare le percentuali corrette)
+      prefermentSalt, // Sale già usato nel pre-fermento
+      prefermentYeast, // Lievito già usato nel pre-fermento
+      autolysisSalt, // Sale già usato nell'autolisi
+      prefermentMalt // Malto già usato nel pre-fermento (se presente)
     );
     
     // 5. Calcola peso totale
@@ -203,7 +212,8 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
     
     // Calcola costi (moltiplicati per il moltiplicatore)
     let totalCost = 0;
-    const getIngredientPrice = (ingredientId: string): number => {
+    const getIngredientPrice = (ingredientId: string | null | undefined): number => {
+      if (!ingredientId) return 0;
       const ing = ingredients.find(i => i.id === ingredientId);
       if (!ing) return 0;
       
@@ -244,8 +254,50 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
       totalCost += kgAmount * price;
     });
     
-    // Nota: Sale, olio, malto, lievito dovrebbero essere aggiunti come ingredienti aggiuntivi
-    // se si vuole calcolare il loro costo
+    // Costi sale, lievito, olio, malto (dalla chiusura)
+    if (closureResult.salt > 0 && selectedSaltId) {
+      const kgAmount = (closureResult.salt * multiplier) / 1000;
+      const price = getIngredientPrice(selectedSaltId);
+      totalCost += kgAmount * price;
+    }
+    
+    if (closureResult.yeast > 0 && selectedYeastId) {
+      const kgAmount = (closureResult.yeast * multiplier) / 1000;
+      const price = getIngredientPrice(selectedYeastId);
+      totalCost += kgAmount * price;
+    }
+    
+    if (closureResult.oil > 0 && selectedOilId) {
+      const kgAmount = (closureResult.oil * multiplier) / 1000;
+      const price = getIngredientPrice(selectedOilId);
+      totalCost += kgAmount * price;
+    }
+    
+    if (closureResult.malt > 0 && selectedMaltId) {
+      const kgAmount = (closureResult.malt * multiplier) / 1000;
+      const price = getIngredientPrice(selectedMaltId);
+      totalCost += kgAmount * price;
+    }
+    
+    // Costi sale e lievito dal pre-fermento (se presente)
+    if (prefermentResult && prefermentResult.salt > 0 && selectedSaltId) {
+      const kgAmount = (prefermentResult.salt * multiplier) / 1000;
+      const price = getIngredientPrice(selectedSaltId);
+      totalCost += kgAmount * price;
+    }
+    
+    if (prefermentResult && prefermentResult.yeast > 0 && selectedYeastId) {
+      const kgAmount = (prefermentResult.yeast * multiplier) / 1000;
+      const price = getIngredientPrice(selectedYeastId);
+      totalCost += kgAmount * price;
+    }
+    
+    // Costi sale dall'autolisi (se presente)
+    if (autolysisResult && autolysisResult.salt > 0 && selectedSaltId) {
+      const kgAmount = (autolysisResult.salt * multiplier) / 1000;
+      const price = getIngredientPrice(selectedSaltId);
+      totalCost += kgAmount * price;
+    }
     
     result.totalCost = totalCost;
     // totalWeight è già moltiplicato per multiplier (perché flourTotal lo è)
@@ -276,6 +328,10 @@ export function useDoughCalculations(params: UseDoughCalculationsParams): {
     oilPercentage,
     maltPercentage,
     additionalIngredients,
+    selectedSaltId,
+    selectedYeastId,
+    selectedOilId,
+    selectedMaltId,
     ingredients
   ]);
 }

@@ -8,13 +8,23 @@ interface RecipeSummaryProps {
   ingredients: Ingredient[];
   portionWeight?: number;
   multiplier: number;
+  selectedSaltId?: string | null;
+  selectedYeastId?: string | null;
+  selectedOilId?: string | null;
+  selectedMaltId?: string | null;
+  selectedWaterId?: string | null;
 }
 
 export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
   result,
   ingredients,
   portionWeight,
-  multiplier
+  multiplier,
+  selectedSaltId,
+  selectedYeastId,
+  selectedOilId,
+  selectedMaltId,
+  selectedWaterId
 }) => {
   const getIngredientName = (id: string): string => {
     return ingredients.find(i => i.id === id)?.name || 'Ingrediente sconosciuto';
@@ -28,6 +38,26 @@ export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
     }
     return `${value.toFixed(1)} g`;
   };
+  
+  // Calcola il costo di un ingrediente in base alla quantità e al prezzo unitario
+  const calculateIngredientCost = (ingredientId: string | null | undefined, amount: number): number => {
+    if (!ingredientId || amount <= 0) return 0;
+    const ing = ingredients.find(i => i.id === ingredientId);
+    if (!ing || !ing.pricePerUnit) return 0;
+    
+    // Il prezzo è sempre al kg/l dall'economato
+    // Converti grammi in kg
+    const kgAmount = amount / 1000;
+    return ing.pricePerUnit * kgAmount * multiplier;
+  };
+  
+  const formatCost = (cost: number): string => {
+    if (cost === 0) return '€0.00';
+    return `€${cost.toFixed(2)}`;
+  };
+  
+  // Calcola la farina totale per il calcolo dell'idratazione
+  const totalFlour = (result.preferment?.flour || 0) + (result.autolysis?.flour || 0) + result.closure.remainingFlour;
   
   // result.totalWeight è già moltiplicato per multiplier nell'hook
   // result.totalCost è già moltiplicato per multiplier nell'hook
@@ -50,26 +80,41 @@ export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
               1° FASE - Pre-fermento
             </h4>
             <div className="bg-white rounded-xl p-4 space-y-2">
-              {result.preferment.flourBreakdown.map((flour, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                  <span className="font-semibold text-gray-700">
-                    {getIngredientName(flour.flourId)}
-                  </span>
-                  <span className="font-black text-black">{formatWeight(flour.amount)}</span>
-                </div>
-              ))}
+              {result.preferment.flourBreakdown.map((flour, idx) => {
+                const cost = calculateIngredientCost(flour.flourId, flour.amount);
+                return (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-gray-700">
+                      {getIngredientName(flour.flourId)}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="font-black text-black">{formatWeight(flour.amount)}</span>
+                      <span className="font-semibold text-green-600 text-xs">{formatCost(cost)}</span>
+                    </div>
+                  </div>
+                );
+              })}
               <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100">
                 <span className="font-semibold text-gray-700">Acqua</span>
-                <span className="font-black text-black">{formatWeight(result.preferment.water)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.preferment.water)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedWaterId, result.preferment.water))}</span>
+                </div>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="font-semibold text-gray-700">Lievito</span>
-                <span className="font-black text-black">{formatWeight(result.preferment.yeast)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.preferment.yeast)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedYeastId, result.preferment.yeast))}</span>
+                </div>
               </div>
               {result.preferment.salt && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-semibold text-gray-700">Sale</span>
-                  <span className="font-black text-black">{formatWeight(result.preferment.salt)}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-black text-black">{formatWeight(result.preferment.salt)}</span>
+                    <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedSaltId, result.preferment.salt))}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -83,22 +128,34 @@ export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
               2° FASE - Autolisi
             </h4>
             <div className="bg-white rounded-xl p-4 space-y-2">
-              {result.autolysis.flourBreakdown.map((flour, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                  <span className="font-semibold text-gray-700">
-                    {getIngredientName(flour.flourId)}
-                  </span>
-                  <span className="font-black text-black">{formatWeight(flour.amount)}</span>
-                </div>
-              ))}
+              {result.autolysis.flourBreakdown.map((flour, idx) => {
+                const cost = calculateIngredientCost(flour.flourId, flour.amount);
+                return (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-gray-700">
+                      {getIngredientName(flour.flourId)}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="font-black text-black">{formatWeight(flour.amount)}</span>
+                      <span className="font-semibold text-green-600 text-xs">{formatCost(cost)}</span>
+                    </div>
+                  </div>
+                );
+              })}
               <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100">
                 <span className="font-semibold text-gray-700">Acqua</span>
-                <span className="font-black text-black">{formatWeight(result.autolysis.water)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.autolysis.water)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedWaterId, result.autolysis.water))}</span>
+                </div>
               </div>
               {result.autolysis.salt && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-semibold text-gray-700">Sale</span>
-                  <span className="font-black text-black">{formatWeight(result.autolysis.salt)}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-black text-black">{formatWeight(result.autolysis.salt)}</span>
+                    <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedSaltId, result.autolysis.salt))}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -112,14 +169,20 @@ export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
           </h4>
           <div className="bg-white rounded-xl p-4 space-y-2">
             {result.closure.flourBreakdown && result.closure.flourBreakdown.length > 0 ? (
-              result.closure.flourBreakdown.map((flour, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                  <span className="font-semibold text-gray-700">
-                    {getIngredientName(flour.flourId)}
-                  </span>
-                  <span className="font-black text-black">{formatWeight(flour.amount)}</span>
-                </div>
-              ))
+              result.closure.flourBreakdown.map((flour, idx) => {
+                const cost = calculateIngredientCost(flour.flourId, flour.amount);
+                return (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-gray-700">
+                      {getIngredientName(flour.flourId)}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="font-black text-black">{formatWeight(flour.amount)}</span>
+                      <span className="font-semibold text-green-600 text-xs">{formatCost(cost)}</span>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="text-xs text-gray-400 font-semibold italic pb-2">
                 Nessuna farina selezionata per la chiusura
@@ -127,34 +190,63 @@ export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
             )}
             <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100">
               <span className="font-semibold text-gray-700">Acqua di chiusura</span>
-              <span className="font-black text-black">{formatWeight(result.closure.water || 0)}</span>
+              <div className="flex items-center gap-3">
+                <span className="font-black text-black">{formatWeight(result.closure.water || 0)}</span>
+                <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedWaterId, result.closure.water || 0))}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-gray-700">Sale</span>
-              <span className="font-black text-black">{formatWeight(result.closure.salt || 0)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-gray-700">Lievito</span>
-              <span className="font-black text-black">{formatWeight(result.closure.yeast || 0)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-gray-700">Olio</span>
-              <span className="font-black text-black">{formatWeight(result.closure.oil || 0)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-gray-700">Malto</span>
-              <span className="font-black text-black">{formatWeight(result.closure.malt || 0)}</span>
-            </div>
+            {(result.closure.salt || 0) > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-gray-700">Sale</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.closure.salt || 0)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedSaltId, result.closure.salt || 0))}</span>
+                </div>
+              </div>
+            )}
+            {(result.closure.yeast || 0) > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-gray-700">Lievito</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.closure.yeast || 0)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedYeastId, result.closure.yeast || 0))}</span>
+                </div>
+              </div>
+            )}
+            {(result.closure.oil || 0) > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-gray-700">Olio</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.closure.oil || 0)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedOilId, result.closure.oil || 0))}</span>
+                </div>
+              </div>
+            )}
+            {(result.closure.malt || 0) > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-gray-700">Malto</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{formatWeight(result.closure.malt || 0)}</span>
+                  <span className="font-semibold text-green-600 text-xs">{formatCost(calculateIngredientCost(selectedMaltId, result.closure.malt || 0))}</span>
+                </div>
+              </div>
+            )}
             {result.closure.additionalIngredients && result.closure.additionalIngredients.length > 0 && (
               <>
-                {result.closure.additionalIngredients.map((ing, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <span className="font-semibold text-gray-700">
-                      {getIngredientName(ing.ingredientId)}
-                    </span>
-                    <span className="font-black text-black">{formatWeight(ing.amount || 0)}</span>
-                  </div>
-                ))}
+                {result.closure.additionalIngredients.map((ing, idx) => {
+                  const cost = calculateIngredientCost(ing.ingredientId, ing.amount || 0);
+                  return (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <span className="font-semibold text-gray-700">
+                        {getIngredientName(ing.ingredientId)}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-black text-black">{formatWeight(ing.amount || 0)}</span>
+                        <span className="font-semibold text-green-600 text-xs">{formatCost(cost)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>
@@ -170,7 +262,6 @@ export const RecipeSummary: React.FC<RecipeSummaryProps> = ({
             <span className="font-bold text-sm text-gray-600">Idratazione totale</span>
             <span className="font-black text-sm text-gray-800">
               {(() => {
-                const totalFlour = (result.preferment?.flour || 0) + (result.autolysis?.flour || 0) + result.closure.remainingFlour;
                 const totalWater = (result.preferment?.water || 0) + (result.autolysis?.water || 0) + result.closure.water;
                 return totalFlour > 0 ? ((totalWater / totalFlour) * 100).toFixed(1) : '0';
               })()}%
