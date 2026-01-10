@@ -276,6 +276,30 @@ export interface QuoteItem {
   total: number;
 }
 
+export interface EventMenuItem {
+  menuItemId: string; // ID del MenuItem selezionato
+  menuItemName: string; // Nome del piatto
+  portion: 'full' | 'half' | 'quarter'; // Porzione intera, 1/2 o 1/4
+  quantity: number; // Quantità per questo piatto
+  unitPrice: number; // Prezzo unitario (può variare in base alla porzione)
+  total: number; // Totale = quantity * unitPrice
+}
+
+export interface CustomEventDish {
+  id: string;
+  name: string;
+  description?: string;
+  ingredients: Array<{
+    ingredientId: string;
+    ingredientName: string;
+    quantity: number;
+    unit: string;
+  }>;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
 export interface Quote {
   id: string;
   quoteNumber?: string; // Numero preventivo (es. PREV-2024-001)
@@ -292,6 +316,11 @@ export interface Quote {
   createdAt: Date | any;
   updatedAt: Date | any;
   createdBy: string; // userId
+  // Menu Evento
+  eventDate?: Date | any;
+  expectedPeople?: number;
+  eventMenuItems?: EventMenuItem[];
+  customEventDishes?: CustomEventDish[];
 }
 
 export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'custom-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile' | 'marketing' | 'marketing-overview' | 'marketing-google' | 'quotes' | 'create-quote' | 'import-clients' | 'clients';

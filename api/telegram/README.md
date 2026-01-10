@@ -50,7 +50,7 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https:
 5. Copia il Chat ID e incollalo nel campo "Telegram Chat ID" nelle impostazioni
 6. Salva
 
-### 4. Testa il Bot
+### 5. Testa il Bot
 
 Invia `/start` al bot su Telegram. Se tutto è configurato correttamente, vedrai i comandi disponibili.
 

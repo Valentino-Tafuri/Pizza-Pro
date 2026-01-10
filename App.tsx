@@ -687,10 +687,25 @@ const App: React.FC = () => {
       case 'profile': return <ProfileView userData={userData} onUpdate={handleUpdateUserData} onSignOut={handleSignOut} />;
       case 'create-quote': return <CreateQuoteView 
         userId={user?.uid || ''}
+        menu={menu}
+        ingredients={ingredients}
+        subRecipes={subRecipes}
+        suppliers={suppliers}
+        userData={userData}
         onSave={async (quote) => {
           // Quote is already saved in CreateQuoteView, this is just for additional handling if needed
           console.log('[App] Quote saved:', quote);
         }}
+        onAddMenuItem={(item) => handleSave('menu', item)}
+        onAddIngredient={async (ing) => {
+          const id = await handleSave('ingredients', ing);
+          return id;
+        }}
+        onAddSupplier={async (sup) => {
+          const id = await handleSave('suppliers', sup);
+          return id;
+        }}
+        onAddSubRecipe={(sub) => handleSave('subRecipes', sub)}
       />;
       case 'import-clients': return <ImportClientsView 
         userId={user?.uid || ''}
