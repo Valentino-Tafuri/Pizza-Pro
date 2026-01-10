@@ -100,6 +100,7 @@ export interface ComponentUsage {
   id: string;
   type: 'ingredient' | 'subrecipe' | 'menuitem';
   quantity: number;
+  unit?: Unit; // Unità dell'ingrediente (preservata quando si aggiunge un ingrediente)
 }
 
 export interface Preparation extends SubRecipe {
@@ -285,6 +286,14 @@ export interface EventMenuItem {
   total: number; // Totale = quantity * unitPrice
 }
 
+export interface EventBeverage {
+  beverageId: string; // ID dell'ingrediente beverage
+  beverageName: string; // Nome della bevanda
+  quantity: number; // Quantità in litri (calcolata: expectedPeople * 0.2)
+  unitPrice: number; // Prezzo per litro
+  total: number; // Totale = quantity * unitPrice
+}
+
 export interface CustomEventDish {
   id: string;
   name: string;
@@ -319,7 +328,9 @@ export interface Quote {
   // Menu Evento
   eventDate?: Date | any;
   expectedPeople?: number;
+  coverCost?: number; // Costo coperto
   eventMenuItems?: EventMenuItem[];
+  eventBeverages?: EventBeverage[];
   customEventDishes?: CustomEventDish[];
 }
 

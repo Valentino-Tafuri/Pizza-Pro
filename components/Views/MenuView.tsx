@@ -145,8 +145,15 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
       const missing: any[] = [];
 
       data.components.forEach((c: any) => {
-        if (c.matchedId) newComps.push({ id: c.matchedId, type: 'ingredient', quantity: c.quantity });
-        else missing.push(c);
+        if (c.matchedId) {
+          const matchedIngredient = ingredients.find(ing => ing.id === c.matchedId);
+          newComps.push({ 
+            id: c.matchedId, 
+            type: 'ingredient', 
+            quantity: c.quantity,
+            unit: matchedIngredient?.unit // Preserva l'unità dell'ingrediente trovato
+          });
+        } else missing.push(c);
       });
 
       setForm({ name: data.name, sellingPrice: data.sellingPrice, category: 'Menu AI', components: newComps });
@@ -178,13 +185,24 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
     const price = parseFloat(quickIngPrice.replace(',', '.'));
     if (isNaN(price)) return;
     const current = missingComps[currentMissingIdx];
-    const newId = await onAddIngredient({
-      id: '', name: current.name, unit: 'kg', pricePerUnit: price, category: 'AI Imports'
-    });
+    const ingredientToAdd = {
+      id: '', 
+      name: current.name, 
+      unit: 'kg' as Unit, // Default a 'kg' per AI imports
+      pricePerUnit: price, 
+      category: 'AI Imports'
+    };
+    const newId = await onAddIngredient(ingredientToAdd);
     if (newId) {
+      // Usa l'unità che è stata passata al onAddIngredient
       setForm(prev => ({
         ...prev,
-        components: [...(prev.components || []), { id: newId, type: 'ingredient', quantity: current.quantity }]
+        components: [...(prev.components || []), { 
+          id: newId, 
+          type: 'ingredient', 
+          quantity: current.quantity,
+          unit: ingredientToAdd.unit // Preserva l'unità dell'ingrediente appena creato
+        }]
       }));
       if (currentMissingIdx < missingComps.length - 1) {
         setCurrentMissingIdx(prev => prev + 1);
@@ -666,7 +684,11 @@ Header richiesti:
                       onChange={e => setForm({...form, components: form.components?.map(comp => comp.id === c.id ? {...comp, quantity: parseFloat(e.target.value)} : comp)})} 
                     />
                     <span className="text-[10px] text-gray-400 font-bold ml-1 uppercase">
-                      {c.type === 'menuitem' || (c.type === 'subrecipe' && subRecipes.find(s => s.id === c.id)?.portionWeight) ? 'porz' : 'g'}
+                      {c.type === 'menuitem' || (c.type === 'subrecipe' && subRecipes.find(s => s.id === c.id)?.portionWeight) 
+                        ? 'porz' 
+                        : c.type === 'ingredient' && c.unit 
+                          ? c.unit 
+                          : ingredients.find(ing => ing.id === c.id)?.unit || 'g'}
                     </span>
                     <button 
                       onClick={() => setForm({...form, components: form.components?.filter(comp => comp.id !== c.id)})} 
@@ -1187,7 +1209,12 @@ Header richiesti:
                       if (newId) {
                         setForm({
                           ...form,
-                          components: [...(form.components || []), { id: newId, type: 'ingredient', quantity: 100 }]
+                          components: [...(form.components || []), { 
+                            id: newId, 
+                            type: 'ingredient', 
+                            quantity: 100,
+                            unit: newIngredientForm.unit // Preserva l'unità dell'ingrediente appena creato
+                          }]
                         });
                         setShowAddComponentModal(false);
                         setShowNewIngredientForm(false);
@@ -1219,7 +1246,12 @@ Header richiesti:
                           if (!alreadyAdded) {
                             setForm({
                               ...form,
-                              components: [...(form.components || []), { id: ing.id, type: 'ingredient', quantity: 100 }]
+                              components: [...(form.components || []), { 
+                                id: ing.id, 
+                                type: 'ingredient', 
+                                quantity: 100,
+                                unit: ing.unit // Preserva l'unità dell'ingrediente
+                              }]
                             });
                             setShowAddComponentModal(false);
                             setAddComponentSearch('');
