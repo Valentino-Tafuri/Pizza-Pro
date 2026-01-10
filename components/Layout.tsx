@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Utensils, Beaker, Package, Settings, 
   Truck, Users, BarChart3, ChevronRight, Menu as MenuIcon, X, User, Calculator,
-  Warehouse, Tag, ScanBarcode, TrendingUp, Star, MapPin, FileText
+  Warehouse, Tag, ScanBarcode, TrendingUp, Star, MapPin, FileText, Upload
 } from 'lucide-react';
 import { ViewType } from '../types';
 
@@ -64,6 +64,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
       label: 'Preventivi',
       items: [
         { id: 'create-quote' as ViewType, label: 'Nuovo Preventivo', icon: FileText },
+        { id: 'import-clients' as ViewType, label: 'Importa Clienti', icon: Upload },
       ]
     },
     {

@@ -22,6 +22,7 @@ import PreparationSettingsView from './components/Views/PreparationSettingsView'
 import MarketingOverview from './components/Views/Marketing/MarketingOverview';
 import GoogleView from './components/Views/Marketing/GoogleView';
 import CreateQuoteView from './components/Views/CreateQuoteView';
+import ImportClientsView from './components/Views/ImportClientsView';
 import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
 import { generateReviewResponse } from './services/aiReviewResponder';
@@ -690,6 +691,13 @@ const App: React.FC = () => {
           console.log('[App] Quote saved:', quote);
         }}
       />;
+      case 'import-clients': return <ImportClientsView 
+        userId={user?.uid || ''}
+        onImportComplete={() => {
+          console.log('[App] Import completato');
+          // Opzionalmente puoi aggiornare la lista clienti o mostrare un messaggio
+        }}
+      />;
       default: return <DashboardView 
         menu={menu} 
         ingredients={ingredients} 
@@ -729,7 +737,8 @@ const App: React.FC = () => {
       'marketing-overview': 'PANORAMICA',
       'marketing-google': 'GOOGLE',
       'quotes': 'PREVENTIVI',
-      'create-quote': 'NUOVO PREVENTIVO'
+      'create-quote': 'NUOVO PREVENTIVO',
+      'import-clients': 'IMPORTA CLIENTI'
     };
     return titles[view] || view.toUpperCase();
   };
