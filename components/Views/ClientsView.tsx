@@ -18,6 +18,8 @@ const ClientsView: React.FC<ClientsViewProps> = ({ userId, onClientSelect }) => 
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const menuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   // Carica clienti all'avvio
