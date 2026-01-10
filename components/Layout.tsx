@@ -63,6 +63,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setActiveView, ti
     {
       label: 'Preventivi',
       items: [
+        { id: 'clients' as ViewType, label: 'Clienti', icon: User },
         { id: 'create-quote' as ViewType, label: 'Nuovo Preventivo', icon: FileText },
         { id: 'import-clients' as ViewType, label: 'Importa Clienti', icon: Upload },
       ]

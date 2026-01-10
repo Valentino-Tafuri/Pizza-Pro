@@ -23,6 +23,7 @@ import MarketingOverview from './components/Views/Marketing/MarketingOverview';
 import GoogleView from './components/Views/Marketing/GoogleView';
 import CreateQuoteView from './components/Views/CreateQuoteView';
 import ImportClientsView from './components/Views/ImportClientsView';
+import ClientsView from './components/Views/ClientsView';
 import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
 import { generateReviewResponse } from './services/aiReviewResponder';
@@ -698,6 +699,15 @@ const App: React.FC = () => {
           // Opzionalmente puoi aggiornare la lista clienti o mostrare un messaggio
         }}
       />;
+      case 'clients': return <ClientsView 
+        userId={user?.uid || ''}
+        onClientSelect={(client) => {
+          // Naviga a "Nuovo Preventivo" con il cliente preselezionato
+          setActiveView('create-quote');
+          // Il cliente verrà passato via state o context se necessario
+          console.log('[App] Cliente selezionato per preventivo:', client);
+        }}
+      />;
       default: return <DashboardView 
         menu={menu} 
         ingredients={ingredients} 
@@ -738,7 +748,8 @@ const App: React.FC = () => {
       'marketing-google': 'GOOGLE',
       'quotes': 'PREVENTIVI',
       'create-quote': 'NUOVO PREVENTIVO',
-      'import-clients': 'IMPORTA CLIENTI'
+      'import-clients': 'IMPORTA CLIENTI',
+      'clients': 'CLIENTI'
     };
     return titles[view] || view.toUpperCase();
   };
