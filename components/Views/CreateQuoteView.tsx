@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, X, User, MapPin, Mail, Building2, FileText, Save, Loader2, Calendar, Users, Utensils, Plus, Minus, Package, ChefHat, Coffee, Printer, Edit2 } from 'lucide-react';
+import { Search, X, User, MapPin, Mail, Building2, FileText, Save, Loader2, Calendar, Users, Utensils, Plus, Minus, Package, ChefHat, Coffee, Printer, Edit2, Phone } from 'lucide-react';
 import { Client, Quote, MenuItem, Ingredient, EventMenuItem, EventBeverage, CustomEventDish, SubRecipe, UserData, Supplier } from '../../types';
 import { fetchCRMClients } from '../../services/crm';
 import { saveData } from '../../services/database';
 import { Timestamp } from 'firebase/firestore';
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
+import ConfirmationModal, { AlertModal } from '../ConfirmationModal';
 
 interface CreateQuoteViewProps {
   userId: string;
@@ -44,6 +45,33 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    buttonText?: string;
+    onClose: () => void;
+    variant?: 'danger' | 'warning' | 'info' | 'success';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onClose: () => {},
+  });
 
   // New Client Modal States
   const [showNewClientModal, setShowNewClientModal] = useState(false);
@@ -62,8 +90,8 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
   // Menu Evento States
   const [showEventMenu, setShowEventMenu] = useState(true);
   const [eventDate, setEventDate] = useState('');
-  const [expectedPeople, setExpectedPeople] = useState<number>(0);
-  const [coverCost, setCoverCost] = useState<number>(0);
+  const [expectedPeople, setExpectedPeople] = useState<number>(1);
+  const [coverCost, setCoverCost] = useState<number>(2);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [eventMenuItems, setEventMenuItems] = useState<EventMenuItem[]>([]);
   const [eventBeverages, setEventBeverages] = useState<EventBeverage[]>([]);
@@ -104,7 +132,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
         setFilteredClients(fetchedClients);
       } catch (error) {
         console.error('Error loading clients:', error);
-        alert('Errore nel caricamento dei clienti. Verifica la configurazione CRM.');
+        showAlert('Errore', 'Errore nel caricamento dei clienti. Verifica la configurazione CRM.', () => {}, 'danger');
       } finally {
         setIsLoading(false);
       }
@@ -133,20 +161,63 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        searchInputRef.current &&
-        !searchInputRef.current.contains(event.target as Node) &&
-        !selectedClient // Non chiudere se c'è un cliente selezionato
-      ) {
-        setIsSearchOpen(false);
+      // Non chiudere se c'è un cliente selezionato
+      if (selectedClient) return;
+      
+      // Verifica se il click è dentro il dropdown
+      const target = event.target as Node;
+      if (dropdownRef.current && dropdownRef.current.contains(target)) {
+        return;
       }
+      
+      // Verifica se il click è dentro l'input di ricerca
+      if (searchInputRef.current && searchInputRef.current.contains(target)) {
+        return;
+      }
+      
+      // Verifica se il click è dentro il dropdown dei risultati
+      const dropdownResults = document.querySelector('[data-dropdown-results]');
+      if (dropdownResults && dropdownResults.contains(target)) {
+        return;
+      }
+      
+      // Chiudi il dropdown solo se il click è fuori da tutto
+      setIsSearchOpen(false);
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [selectedClient]);
+
+  // Helper functions per mostrare modali
+  const showConfirm = (title: string, message: string, onConfirm: () => void, confirmText = 'Conferma', cancelText = 'Annulla', variant: 'danger' | 'warning' | 'info' = 'warning') => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      confirmText,
+      cancelText,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal({ ...confirmModal, isOpen: false });
+      },
+      variant,
+    });
+  };
+
+  const showAlert = (title: string, message: string, onClose = () => {}, variant: 'danger' | 'warning' | 'info' | 'success' = 'info') => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      buttonText: 'Ok',
+      onClose: () => {
+        onClose();
+        setAlertModal({ ...alertModal, isOpen: false });
+      },
+      variant,
+    });
+  };
 
   const handleClientSelect = (client: Client) => {
     console.log('Selecting client:', client);
@@ -171,7 +242,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
   const handleCreateNewClient = async () => {
     if (!newClient.name || !newClient.name.trim()) {
-      alert('Il nome del cliente è obbligatorio.');
+      showAlert('Campo Obbligatorio', 'Il nome del cliente è obbligatorio.', () => {}, 'warning');
       return;
     }
 
@@ -218,10 +289,10 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
       });
       setShowNewClientModal(false);
 
-      alert('✅ Cliente creato con successo!');
+      showAlert('Cliente Creato', 'Cliente creato con successo!', () => {}, 'success');
     } catch (error) {
       console.error('Error creating client:', error);
-      alert('Errore nella creazione del cliente.');
+      showAlert('Errore', 'Errore nella creazione del cliente.', () => {}, 'danger');
     } finally {
       setIsSavingClient(false);
     }
@@ -375,7 +446,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
   const handleAddManualProduct = () => {
     if (!manualProduct.name || !manualProduct.price || manualProduct.price <= 0) {
-      alert('Inserisci nome e prezzo validi per il prodotto.');
+      showAlert('Campo Obbligatorio', 'Inserisci nome e prezzo validi per il prodotto.', () => {}, 'warning');
       return;
     }
 
@@ -427,14 +498,14 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
   const handlePrintQuote = () => {
     if (!selectedClient) {
-      alert('Seleziona un cliente prima di stampare il preventivo.');
+      showAlert('Cliente Mancante', 'Seleziona un cliente prima di stampare il preventivo.', () => {}, 'warning');
       return;
     }
 
     try {
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Impossibile aprire la finestra di stampa. Verifica che i popup non siano bloccati.');
+        showAlert('Avviso', 'Impossibile aprire la finestra di stampa. Verifica che i popup non siano bloccati.', () => {}, 'warning');
         return;
       }
 
@@ -528,7 +599,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
             printWindow.print();
           } catch (err) {
             console.error('Errore durante la stampa:', err);
-            alert('Errore durante la stampa. Prova a utilizzare la funzione di stampa del browser manualmente.');
+            showAlert('Errore Stampa', 'Errore durante la stampa. Prova a utilizzare la funzione di stampa del browser manualmente.', () => {}, 'danger');
           }
         }, 500);
       });
@@ -543,7 +614,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
       }, 1000);
     } catch (error) {
       console.error('Errore durante la creazione della finestra di stampa:', error);
-      alert('Errore durante la stampa. Prova a utilizzare la funzione di stampa del browser manualmente.');
+      showAlert('Errore Stampa', 'Errore durante la stampa. Prova a utilizzare la funzione di stampa del browser manualmente.', () => {}, 'danger');
     }
   };
 
@@ -595,7 +666,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
   const handleAddCustomDish = () => {
     if (!newCustomDish.name || newCustomDish.ingredients?.length === 0) {
-      alert('Inserisci nome e almeno un ingrediente per il piatto personalizzato.');
+      showAlert('Campo Obbligatorio', 'Inserisci nome e almeno un ingrediente per il piatto personalizzato.', () => {}, 'warning');
       return;
     }
 
@@ -626,21 +697,21 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
   const handleSaveDraft = async () => {
     if (!selectedClient) {
-      alert('Seleziona un cliente prima di salvare il preventivo.');
+      showAlert('Cliente Mancante', 'Seleziona un cliente prima di salvare il preventivo.', () => {}, 'warning');
       return;
     }
 
     // Valida menu evento
     if (!eventDate) {
-      alert('Inserisci la data dell\'evento.');
+      showAlert('Campo Obbligatorio', 'Inserisci la data dell\'evento.', () => {}, 'warning');
       return;
     }
     if (!expectedPeople || expectedPeople < 1) {
-      alert('Inserisci il numero di persone previste.');
+      showAlert('Campo Obbligatorio', 'Inserisci il numero di persone previste.', () => {}, 'warning');
       return;
     }
       if (eventMenuItems.length === 0) {
-        alert('Aggiungi almeno un piatto dal menu.');
+        showAlert('Menu Vuoto', 'Aggiungi almeno un piatto dal menu.', () => {}, 'warning');
         return;
       }
 
@@ -674,7 +745,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
         await onSave(draftQuote);
       }
 
-      alert('✅ Preventivo salvato come bozza con successo!');
+      showAlert('Preventivo Salvato', 'Preventivo salvato come bozza con successo!', () => {}, 'success');
       
       // Reset form
       handleClearClient();
@@ -685,7 +756,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
       setEventBeverages([]);
     } catch (error) {
       console.error('Error saving quote:', error);
-      alert('Errore nel salvataggio del preventivo.');
+      showAlert('Errore', 'Errore nel salvataggio del preventivo.', () => {}, 'danger');
     } finally {
       setIsSaving(false);
     }
@@ -750,7 +821,12 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
           {/* Dropdown Results */}
           {isSearchOpen && searchQuery && filteredClients.length > 0 && !isLoading && !selectedClient && (
-            <div className="absolute z-50 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-96 overflow-y-auto">
+            <div 
+              data-dropdown-results
+              className="absolute z-50 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-96 overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="py-2">
                 {filteredClients.slice(0, 10).map((client) => (
                   <button
@@ -759,10 +835,17 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                       e.preventDefault();
                       e.stopPropagation();
                       console.log('Client clicked:', client);
-                      handleClientSelect(client);
+                      // Usa un timeout per assicurarsi che l'evento venga gestito prima del click outside
+                      setTimeout(() => {
+                        handleClientSelect(client);
+                      }, 0);
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                     }}
                     type="button"
-                    className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
+                    className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 active:bg-gray-100"
                   >
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-base uppercase shadow-sm">
@@ -855,6 +938,25 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
             </p>
           </div>
 
+          {/* Cliente Info - Nome, Telefono */}
+          {selectedClient.phone && (
+            <div className="mb-6 pb-6 border-b border-gray-100">
+              <div className="flex items-start space-x-3">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-base uppercase shadow-sm flex-shrink-0">
+                  {selectedClient.name.charAt(0)}
+                </div>
+                <div className="flex-1">
+                  <p className="text-[9px] font-black uppercase text-blue-600/60 mb-1">INTESTATARIO</p>
+                  <p className="text-base font-black text-black mb-3">{selectedClient.name}</p>
+                  <div className="flex items-center gap-2">
+                    <Phone className="text-gray-400" size={14} />
+                    <span className="text-sm font-bold text-gray-700">{selectedClient.phone}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {selectedClient.address && (
               <div className="flex items-start space-x-3">
@@ -882,25 +984,6 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               </div>
             )}
 
-            {selectedClient.email && (
-              <div className="flex items-start space-x-3">
-                <Mail className="text-blue-600 mt-1 flex-shrink-0" size={18} />
-                <div>
-                  <p className="text-[9px] font-black uppercase text-blue-600/60 mb-1">Email</p>
-                  <p className="text-sm font-bold text-black">{selectedClient.email}</p>
-                </div>
-              </div>
-            )}
-
-            {selectedClient.phone && (
-              <div className="flex items-start space-x-3">
-                <User className="text-blue-600 mt-1 flex-shrink-0" size={18} />
-                <div>
-                  <p className="text-[9px] font-black uppercase text-blue-600/60 mb-1">Telefono</p>
-                  <p className="text-sm font-bold text-black">{selectedClient.phone}</p>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="mt-6 pt-6 border-t border-blue-200">
@@ -1332,12 +1415,19 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-                if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                  setShowAddDishModal(false);
-                  setAddDishSource(null);
-                  setAddDishSearch('');
-                  setSelectedCategory(null);
-                }
+                showConfirm(
+                  'Chiudere Creazione',
+                  'Le modifiche non salvate andranno perse.',
+                  () => {
+                    setShowAddDishModal(false);
+                    setAddDishSource(null);
+                    setAddDishSearch('');
+                    setSelectedCategory(null);
+                  },
+                  'Chiudi',
+                  'Annulla',
+                  'warning'
+                );
             }
           }}
         >
@@ -1351,12 +1441,19 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               </h3>
               <button
                 onClick={() => {
-                if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                  setShowAddDishModal(false);
-                  setAddDishSource(null);
-                  setAddDishSearch('');
-                  setSelectedCategory(null);
-                }
+                showConfirm(
+                  'Chiudere Creazione',
+                  'Le modifiche non salvate andranno perse.',
+                  () => {
+                    setShowAddDishModal(false);
+                    setAddDishSource(null);
+                    setAddDishSearch('');
+                    setSelectedCategory(null);
+                  },
+                  'Chiudi',
+                  'Annulla',
+                  'warning'
+                );
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -1482,16 +1579,23 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
-                if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                  setShowCustomDishModal(false);
-                  setNewCustomDish({
-                    name: '',
-                    description: '',
-                    ingredients: [],
-                    quantity: 1,
-                    unitPrice: 0,
-                  });
-                }
+                showConfirm(
+                  'Chiudere Creazione',
+                  'Le modifiche non salvate andranno perse.',
+                  () => {
+                    setShowCustomDishModal(false);
+                    setNewCustomDish({
+                      name: '',
+                      description: '',
+                      ingredients: [],
+                      quantity: 1,
+                      unitPrice: 0,
+                    });
+                  },
+                  'Chiudi',
+                  'Annulla',
+                  'warning'
+                );
               }
             }}
           >
@@ -1503,16 +1607,23 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                 <h3 className="text-lg font-black text-black">Nuovo Piatto Personalizzato</h3>
                 <button
                   onClick={() => {
-                    if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                      setShowCustomDishModal(false);
-                      setNewCustomDish({
-                        name: '',
-                        description: '',
-                        ingredients: [],
-                        quantity: 1,
-                        unitPrice: 0,
-                      });
-                    }
+                    showConfirm(
+                      'CHIUDERE CREAZIONE',
+                      'Le modifiche non salvate andranno perse.',
+                      () => {
+                        setShowCustomDishModal(false);
+                        setNewCustomDish({
+                          name: '',
+                          description: '',
+                          ingredients: [],
+                          quantity: 1,
+                          unitPrice: 0,
+                        });
+                      },
+                      'Chiudi',
+                      'Annulla',
+                      'warning'
+                    );
                   }}
                   className="p-2 hover:bg-gray-100 rounded-full"
                 >
@@ -1715,16 +1826,23 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                      setShowCustomDishModal(false);
-                      setNewCustomDish({
-                        name: '',
-                        description: '',
-                        ingredients: [],
-                        quantity: 1,
-                        unitPrice: 0,
-                      });
-                    }
+                    showConfirm(
+                      'CHIUDERE CREAZIONE',
+                      'Le modifiche non salvate andranno perse.',
+                      () => {
+                        setShowCustomDishModal(false);
+                        setNewCustomDish({
+                          name: '',
+                          description: '',
+                          ingredients: [],
+                          quantity: 1,
+                          unitPrice: 0,
+                        });
+                      },
+                      'Chiudi',
+                      'Annulla',
+                      'warning'
+                    );
                   }}
                   className="px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-black text-sm active:scale-95 transition-all"
                 >
@@ -1745,14 +1863,21 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                setShowManualProductModal(false);
-                setManualProduct({
-                  name: '',
-                  price: 0,
-                  portion: 'full',
-                });
-              }
+              showConfirm(
+                'CHIUDERE CREAZIONE',
+                'Le modifiche non salvate andranno perse.',
+                () => {
+                  setShowManualProductModal(false);
+                  setManualProduct({
+                    name: '',
+                    price: 0,
+                    portion: 'full',
+                  });
+                },
+                'Chiudi',
+                'Annulla',
+                'warning'
+              );
             }
           }}
         >
@@ -1766,14 +1891,21 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               </h3>
               <button
                 onClick={() => {
-                  if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                    setShowManualProductModal(false);
-                    setManualProduct({
-                      name: '',
-                      price: 0,
-                      portion: 'full',
-                    });
-                  }
+                  showConfirm(
+                    'CHIUDERE CREAZIONE',
+                    'Le modifiche non salvate andranno perse.',
+                    () => {
+                      setShowManualProductModal(false);
+                      setManualProduct({
+                        name: '',
+                        price: 0,
+                        portion: 'full',
+                      });
+                    },
+                    'Chiudi',
+                    'Annulla',
+                    'warning'
+                  );
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -1892,19 +2024,26 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                setShowNewClientModal(false);
-                setNewClient({
-                  name: '',
-                  email: '',
-                  phone: '',
-                  address: '',
-                  city: '',
-                  postalCode: '',
-                  country: 'IT',
-                  vat_number: '',
-                });
-              }
+              showConfirm(
+                'CHIUDERE CREAZIONE',
+                'Le modifiche non salvate andranno perse.',
+                () => {
+                  setShowNewClientModal(false);
+                  setNewClient({
+                    name: '',
+                    email: '',
+                    phone: '',
+                    address: '',
+                    city: '',
+                    postalCode: '',
+                    country: 'IT',
+                    vat_number: '',
+                  });
+                },
+                'Chiudi',
+                'Annulla',
+                'warning'
+              );
             }
           }}
         >
@@ -1916,19 +2055,26 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               <h3 className="text-lg font-black text-black">Nuovo Cliente</h3>
               <button
                 onClick={() => {
-                  if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                    setShowNewClientModal(false);
-                    setNewClient({
-                      name: '',
-                      email: '',
-                      phone: '',
-                      address: '',
-                      city: '',
-                      postalCode: '',
-                      country: 'IT',
-                      vat_number: '',
-                    });
-                  }
+                  showConfirm(
+                    'CHIUDERE CREAZIONE',
+                    'Le modifiche non salvate andranno perse.',
+                    () => {
+                      setShowNewClientModal(false);
+                      setNewClient({
+                        name: '',
+                        email: '',
+                        phone: '',
+                        address: '',
+                        city: '',
+                        postalCode: '',
+                        country: 'IT',
+                        vat_number: '',
+                      });
+                    },
+                    'Chiudi',
+                    'Annulla',
+                    'warning'
+                  );
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -2077,9 +2223,16 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md flex items-end justify-center animate-in fade-in duration-300"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                setShowCreateRecipeModal(false);
-              }
+              showConfirm(
+                'CHIUDERE CREAZIONE',
+                'Le modifiche non salvate andranno perse.',
+                () => {
+                  setShowCreateRecipeModal(false);
+                },
+                'Chiudi',
+                'Annulla',
+                'warning'
+              );
             }
           }}
         >
@@ -2093,9 +2246,16 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               <h3 className="text-3xl font-black tracking-tighter">Nuova Ricetta</h3>
               <button 
                 onClick={() => {
-                  if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
-                    setShowCreateRecipeModal(false);
-                  }
+                  showConfirm(
+                    'CHIUDERE CREAZIONE',
+                    'Le modifiche non salvate andranno perse.',
+                    () => {
+                      setShowCreateRecipeModal(false);
+                    },
+                    'Chiudi',
+                    'Annulla',
+                    'warning'
+                  );
                 }} 
                 className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-gray-200 transition-colors"
               >
@@ -2115,7 +2275,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                   // Per ora, suggeriamo all'utente di creare la ricetta nel menu e poi tornare
                   setShowCreateRecipeModal(false);
                   // TODO: Implementare la navigazione a MenuView o creare il form inline
-                  alert('Funzionalità in sviluppo: il form di creazione ricetta verrà implementato qui. Per ora, crea la ricetta nella sezione Menu e poi aggiungila al menu evento.');
+                  showAlert('Info', 'Funzionalità in sviluppo: il form di creazione ricetta verrà implementato qui. Per ora, crea la ricetta nella sezione Menu e poi aggiungila al menu evento.', () => {}, 'info');
                 }}
                 className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black shadow-lg active:scale-95 transition-all mb-4"
               >
@@ -2132,6 +2292,28 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        variant={confirmModal.variant}
+      />
+
+      {/* Alert Modal */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        title={alertModal.title}
+        message={alertModal.message}
+        buttonText={alertModal.buttonText}
+        onClose={alertModal.onClose}
+        variant={alertModal.variant}
+      />
     </div>
   );
 };

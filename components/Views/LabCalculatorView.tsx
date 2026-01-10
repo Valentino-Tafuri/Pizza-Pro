@@ -6,6 +6,7 @@ import { calculateSubRecipeCostPerKg } from '../../services/calculator';
 import { Preferment } from './PrefermentiView';
 import AdvancedDoughCalculator from '../DoughCalculator/AdvancedDoughCalculator';
 import { RecipeSummary } from '../DoughCalculator/RecipeSummary';
+import { AlertModal } from '../ConfirmationModal';
 
 interface LabCalculatorViewProps {
   ingredients: Ingredient[];
@@ -2399,6 +2400,7 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
   );
 
   return (
+    <>
     <div className="space-y-6">
       {/* Search Bar */}
       <div className="relative">
@@ -2782,7 +2784,11 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                     await onUpdate(subRecipe);
                     setShowCalculator(false);
                     setEditingId(null);
-                    alert('✅ Ricetta aggiornata con successo!');
+                    setSuccessModal({
+                      isOpen: true,
+                      title: 'Ricetta Aggiornata',
+                      message: 'Ricetta aggiornata con successo!'
+                    });
                   } else {
                     await onAdd(subRecipe);
                     // Mostra modal per chiedere FIFO e gestione come topping
@@ -2793,7 +2799,11 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
                   }
                 } catch (error) {
                   console.error('Errore nel salvataggio:', error);
-                  alert(`❌ Errore nel salvataggio: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+                  setErrorModal({
+                    isOpen: true,
+                    title: 'Errore nel Salvataggio',
+                    message: error instanceof Error ? error.message : 'Errore sconosciuto'
+                  });
                 }
               }}
             />
@@ -3684,7 +3694,23 @@ const LabCalculatorView: React.FC<LabCalculatorViewProps> = ({ ingredients, subR
         </div>
       )}
     </div>
-  );
+    <AlertModal
+      isOpen={successModal.isOpen}
+      title={successModal.title}
+      message={successModal.message}
+      buttonText="Ok"
+      onClose={() => setSuccessModal({ isOpen: false, title: '', message: '' })}
+      variant="success"
+    />
+    <AlertModal
+      isOpen={errorModal.isOpen}
+      title={errorModal.title}
+      message={errorModal.message}
+      buttonText="Ok"
+      onClose={() => setErrorModal({ isOpen: false, title: '', message: '' })}
+      variant="danger"
+    />
+  </>);
 };
 
 export default LabCalculatorView;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Store, MapPin, Phone, Mail, Globe, Save, CheckCircle2 } from 'lucide-react';
+import { Store, MapPin, Phone, Mail as MailIcon, Globe, Save, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { BusinessConfig, PlatformConnection } from '../../types';
 
 interface BusinessSettingsViewProps {
@@ -10,13 +10,15 @@ interface BusinessSettingsViewProps {
   };
   onSave: (config: BusinessConfig) => Promise<void>;
   onDisconnectPlatform: (platform: 'tripadvisor' | 'google') => Promise<void>;
+  onNavigateBack?: () => void;
 }
 
 const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
   businessConfig,
   platformConnections,
   onSave,
-  onDisconnectPlatform
+  onDisconnectPlatform,
+  onNavigateBack
 }) => {
   const [formData, setFormData] = useState<BusinessConfig>({
     name: '',
@@ -70,10 +72,18 @@ const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
         <div className="flex items-center space-x-3 mb-2">
+          {onNavigateBack && (
+            <button 
+              onClick={onNavigateBack} 
+              className="bg-gray-100 p-2 rounded-full active:scale-90 transition-transform mr-2"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          )}
           <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center">
             <Store className="text-white" size={24} />
           </div>
@@ -164,7 +174,7 @@ const BusinessSettingsView: React.FC<BusinessSettingsViewProps> = ({
               Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <MailIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="email"
                 value={formData.email}

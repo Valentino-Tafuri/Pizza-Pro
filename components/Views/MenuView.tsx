@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, X, Edit2, Trash2, Loader2, Wand2, BrainCircuit, ClipboardList, ArrowRight, AlertTriangle, Upload, FileText, Check } from 'lucide-react';
 import { MenuItem, Ingredient, SubRecipe, ComponentUsage, Unit, Supplier, UserData } from '../../types';
 import { normalizeText, isLabCategory } from '../../utils/textUtils';
+import ConfirmationModal from '../ConfirmationModal';
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 import { calculateMenuItemCost, calculateSubRecipeCostPerKg, getFoodCostColor } from '../../services/calculator';
@@ -52,6 +53,7 @@ const MenuView: React.FC<MenuViewProps> = ({ menu, ingredients, subRecipes, supp
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
   // CSV Import states
   interface CSVRow {
@@ -1541,13 +1543,32 @@ Header richiesti:
               </div>
               <div className="flex flex-col space-y-3">
                 <button onClick={() => { setEditingId(item.id); setForm(item); setCreationMode('manual'); setIsAddingNewCategoryForm(false); }} className="bg-gray-50 p-3 rounded-2xl text-gray-400 border border-gray-100"><Edit2 size={18} /></button>
-                <button onClick={() => onDelete?.(item.id)} className="bg-red-50 p-3 rounded-2xl text-red-300 border border-red-50"><Trash2 size={18} /></button>
+                <button onClick={() => setDeleteConfirmId(item.id)} className="bg-red-50 p-3 rounded-2xl text-red-300 border border-red-50"><Trash2 size={18} /></button>
               </div>
             </div>
           );
         })}
       </div>
       </div>
+
+      {/* Confirmation Modal per eliminazione */}
+      {deleteConfirmId && (
+        <ConfirmationModal
+          isOpen={true}
+          title="Conferma Eliminazione"
+          message={`Sei sicuro di voler eliminare "${menu.find(m => m.id === deleteConfirmId)?.name || 'questo piatto'}"? L'azione non può essere annullata.`}
+          confirmText="Elimina"
+          cancelText="Annulla"
+          onConfirm={() => {
+            if (onDelete && deleteConfirmId) {
+              onDelete(deleteConfirmId);
+            }
+            setDeleteConfirmId(null);
+          }}
+          onCancel={() => setDeleteConfirmId(null)}
+          variant="danger"
+        />
+      )}
     </>
   );
 };

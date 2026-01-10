@@ -84,6 +84,12 @@ export interface UserData {
   bepConfig: BepConfig;
   businessConfig?: BusinessConfig;
   telegramChatId?: string; // Chat ID Telegram per notifiche bot
+  extensions?: {
+    telegramToken?: string;
+    geminiToken?: string;
+    whatsappToken?: string;
+    googleGeminiToken?: string;
+  };
 }
 
 export interface Ingredient {
@@ -334,4 +340,4 @@ export interface Quote {
   customEventDishes?: CustomEventDish[];
 }
 
-export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'custom-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile' | 'marketing' | 'marketing-overview' | 'marketing-google' | 'quotes' | 'quotes-history' | 'create-quote' | 'import-clients' | 'clients';
+export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'laboratorio-prefermenti' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'custom-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'settings-extensions' | 'profile' | 'marketing' | 'marketing-overview' | 'marketing-google' | 'quotes' | 'quotes-history' | 'create-quote' | 'import-clients' | 'clients';

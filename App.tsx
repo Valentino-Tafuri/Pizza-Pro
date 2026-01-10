@@ -25,6 +25,7 @@ import CreateQuoteView from './components/Views/CreateQuoteView';
 import ImportClientsView from './components/Views/ImportClientsView';
 import ClientsView from './components/Views/ClientsView';
 import QuotesHistoryView from './components/Views/QuotesHistoryView';
+import PrefermentiView from './components/Views/PrefermentiView';
 import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
 import { generateReviewResponse } from './services/aiReviewResponder';
@@ -121,7 +122,7 @@ const App: React.FC = () => {
       });
     });
     
-    // Esponi funzione di pulizia economato globalmente per uso dalla console
+    // Esponi funzioni di pulizia globalmente per uso dalla console
     (window as any).cleanupUserEconomato = async (uid: string) => {
       if (!uid) {
         console.error('❌ UID utente richiesto');
@@ -134,6 +135,60 @@ const App: React.FC = () => {
         return deletedCount;
       } catch (error) {
         console.error('❌ Errore durante la pulizia:', error);
+        throw error;
+      }
+    };
+    
+    // Funzione per eliminare tutti i clienti CRM
+    (window as any).cleanupCRMData = async (uid: string) => {
+      if (!uid) {
+        console.error('❌ UID utente richiesto');
+        return 0;
+      }
+      console.log(`🧹 Inizio pulizia clienti CRM per utente: ${uid}`);
+      try {
+        const deletedCount = await deleteAllData(uid, 'crmClients');
+        console.log(`✅ Pulizia completata! Eliminati ${deletedCount} clienti.`);
+        return deletedCount;
+      } catch (error) {
+        console.error('❌ Errore durante la pulizia:', error);
+        throw error;
+      }
+    };
+    
+    // Funzione per controllare l'utilizzo del database
+    (window as any).checkDatabaseUsage = async (uid: string) => {
+      if (!uid) {
+        console.error('❌ UID utente richiesto');
+        return null;
+      }
+      try {
+        const { collection, getDocs, query, limit } = await import('firebase/firestore');
+        const collections = [
+          'ingredients', 'subRecipes', 'menu', 'suppliers', 'employees',
+          'preferments', 'crmClients', 'quotes', 'fifoLabels', 'stockMovements',
+          'preparationSettings', 'platformConnections'
+        ];
+        const stats: Array<{ name: string; count: number }> = [];
+        let total = 0;
+        
+        for (const colName of collections) {
+          try {
+            const colRef = collection(db, `users/${uid}/${colName}`);
+            const q = query(colRef, limit(1000));
+            const snapshot = await getDocs(q);
+            const count = snapshot.size;
+            stats.push({ name: colName, count });
+            total += count;
+            if (count > 0) console.log(`  - ${colName}: ${count} documenti`);
+          } catch (err) {
+            stats.push({ name: colName, count: 0 });
+          }
+        }
+        console.log(`\n📈 Totale documenti: ${total}`);
+        return { collections: stats, totalDocuments: total };
+      } catch (error) {
+        console.error('❌ Errore durante il controllo:', error);
         throw error;
       }
     };
@@ -530,6 +585,11 @@ const App: React.FC = () => {
         onAddSupplier={(s) => handleSave('suppliers', s)}
         userData={userData}
       />;
+      case 'laboratorio-prefermenti': return <PrefermentiView
+        preferments={preferments}
+        onSave={(p) => handleSave('preferments', p)}
+        onDelete={(id) => handleDelete('preferments', id)}
+      />;
       case 'inventario-magazzino':
       case 'warehouse': 
         return <WarehouseView
@@ -583,38 +643,19 @@ const App: React.FC = () => {
         onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection={null}
       />;
-      case 'settings-prefermenti': return <SettingsView
-        userData={userData}
-        employees={employees}
-        suppliers={suppliers}
-        platformConnections={platformConnections}
-        preferments={preferments}
-        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
-        onSaveEmployee={(e) => handleSave('employees', e)}
-        onDeleteEmployee={(id) => handleDelete('employees', id)}
-        onSaveSupplier={(s) => handleSave('suppliers', s)}
-        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
-        onSavePreferment={(p) => handleSave('preferments', p)}
-        onDeletePreferment={(id) => handleDelete('preferments', id)}
-        onSaveBusinessConfig={handleSaveBusinessConfig}
-        onDisconnectPlatform={handleDisconnectPlatform}
-        initialSubSection="prefermenti"
-      />;
       case 'settings-assets': return <SettingsView
         userData={userData}
         employees={employees}
         suppliers={suppliers}
         platformConnections={platformConnections}
-        preferments={preferments}
         onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
         onSaveEmployee={(e) => handleSave('employees', e)}
         onDeleteEmployee={(id) => handleDelete('employees', id)}
         onSaveSupplier={(s) => handleSave('suppliers', s)}
         onDeleteSupplier={(id) => handleDelete('suppliers', id)}
-        onSavePreferment={(p) => handleSave('preferments', p)}
-        onDeletePreferment={(id) => handleDelete('preferments', id)}
         onSaveBusinessConfig={handleSaveBusinessConfig}
         onDisconnectPlatform={handleDisconnectPlatform}
+        onUpdateUserData={handleUpdateUserData}
         initialSubSection="assets"
       />;
       case 'settings-staff': return <SettingsView
@@ -622,16 +663,14 @@ const App: React.FC = () => {
         employees={employees}
         suppliers={suppliers}
         platformConnections={platformConnections}
-        preferments={preferments}
         onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
         onSaveEmployee={(e) => handleSave('employees', e)}
         onDeleteEmployee={(id) => handleDelete('employees', id)}
         onSaveSupplier={(s) => handleSave('suppliers', s)}
         onDeleteSupplier={(id) => handleDelete('suppliers', id)}
-        onSavePreferment={(p) => handleSave('preferments', p)}
-        onDeletePreferment={(id) => handleDelete('preferments', id)}
         onSaveBusinessConfig={handleSaveBusinessConfig}
         onDisconnectPlatform={handleDisconnectPlatform}
+        onUpdateUserData={handleUpdateUserData}
         initialSubSection="staff"
       />;
       case 'settings-suppliers': return <SettingsView
@@ -650,6 +689,21 @@ const App: React.FC = () => {
         onSaveBusinessConfig={handleSaveBusinessConfig}
         onDisconnectPlatform={handleDisconnectPlatform}
         initialSubSection="suppliers"
+      />;
+      case 'settings-extensions': return <SettingsView
+        userData={userData}
+        employees={employees}
+        suppliers={suppliers}
+        platformConnections={platformConnections}
+        onUpdateBep={(config) => handleUpdateUserData({ bepConfig: config })}
+        onSaveEmployee={(e) => handleSave('employees', e)}
+        onDeleteEmployee={(id) => handleDelete('employees', id)}
+        onSaveSupplier={(s) => handleSave('suppliers', s)}
+        onDeleteSupplier={(id) => handleDelete('suppliers', id)}
+        onSaveBusinessConfig={handleSaveBusinessConfig}
+        onDisconnectPlatform={handleDisconnectPlatform}
+        onUpdateUserData={handleUpdateUserData}
+        initialSubSection="extensions"
       />;
       case 'prep-settings': return <PreparationSettingsView 
         preparations={preparations}
@@ -763,10 +817,11 @@ const App: React.FC = () => {
       'scan': 'SCAN',
       'prep-settings': 'ATTIVA PREPARAZIONI',
       'settings': 'IMPOSTAZIONI',
-      'settings-prefermenti': 'PREFERMENTI',
+      'laboratorio-prefermenti': 'PREFERMENTI',
       'settings-assets': 'COSTI E ASSET',
       'settings-staff': 'STAFF',
       'settings-suppliers': 'FORNITORI',
+      'settings-extensions': 'INTEGRAZIONI',
       'profile': 'PROFILO UTENTE',
       'marketing': 'MARKETING',
       'marketing-overview': 'PANORAMICA',

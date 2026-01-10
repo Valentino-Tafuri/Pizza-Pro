@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, User, ArrowLeft, LogOut, Truck, Users, Plus, Trash2, 
   Wallet, ChevronRight, Activity, Percent, Calculator, Info,
@@ -33,7 +33,7 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
   isOpen, onClose, userData, suppliers, employees, onAddSupplier, onAddEmployee, 
   onUpdateUserData, onSignOut, onDeleteSupplier, onDeleteEmployee 
 }) => {
-  const [activeTab, setActiveTab] = useState<'main' | 'user' | 'bep' | 'suppliers' | 'employees'>('main');
+  const [activeTab, setActiveTab] = useState<'main' | 'user' | 'bep' | 'suppliers' | 'employees' | 'extensions'>('main');
   
   // Modals state
   const [showAddEmployee, setShowAddEmployee] = useState(false);
@@ -136,6 +136,156 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
     if (onDeleteEmployee) onDeleteEmployee(id);
     setDeleteConfirmId(null);
   };
+
+  // State per Estensioni
+  const [extensionsForm, setExtensionsForm] = useState({
+    telegramToken: userData.extensions?.telegramToken || '',
+    geminiToken: userData.extensions?.geminiToken || '',
+    whatsappToken: userData.extensions?.whatsappToken || '',
+    googleGeminiToken: userData.extensions?.googleGeminiToken || '',
+  });
+  const [extensionsSaving, setExtensionsSaving] = useState(false);
+
+  // Aggiorna il form quando userData cambia
+  useEffect(() => {
+    setExtensionsForm({
+      telegramToken: userData.extensions?.telegramToken || '',
+      geminiToken: userData.extensions?.geminiToken || '',
+      whatsappToken: userData.extensions?.whatsappToken || '',
+      googleGeminiToken: userData.extensions?.googleGeminiToken || '',
+    });
+  }, [userData.extensions]);
+
+  const handleSaveExtensions = async () => {
+    if (!onUpdateUserData) return;
+    setExtensionsSaving(true);
+    try {
+      await onUpdateUserData({
+        extensions: {
+          telegramToken: extensionsForm.telegramToken || undefined,
+          geminiToken: extensionsForm.geminiToken || undefined,
+          whatsappToken: extensionsForm.whatsappToken || undefined,
+          googleGeminiToken: extensionsForm.googleGeminiToken || undefined,
+        }
+      });
+      setShowPostSaveDialog({ isOpen: true, type: 'user' });
+    } catch (error) {
+      console.error('Error saving extensions:', error);
+    } finally {
+      setExtensionsSaving(false);
+    }
+  };
+
+  const renderExtensions = () => (
+    <div className="space-y-8 animate-in slide-in-from-right duration-500 pb-24">
+      <header className="flex items-center space-x-3">
+        <button onClick={() => setActiveTab('main')} className="bg-gray-100 p-2 rounded-full active:scale-90 transition-transform"><ArrowLeft size={18} /></button>
+        <Zap className="text-white/60" size={24} />
+        <h3 className="text-2xl font-black tracking-tight text-black">Estensioni</h3>
+      </header>
+
+      <div className="space-y-6">
+        {/* Telegram Token */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-blue-50 p-3 rounded-xl">
+              <MessageSquare className="text-blue-600" size={20} />
+            </div>
+            <div>
+              <h4 className="font-black text-black">Token Telegram</h4>
+              <p className="text-xs text-gray-500 font-bold">Inserisci il token del bot Telegram</p>
+            </div>
+          </div>
+          <input
+            type="password"
+            placeholder="Inserisci token Telegram..."
+            className="w-full bg-gray-50 border-none rounded-xl p-4 text-sm font-bold"
+            value={extensionsForm.telegramToken}
+            onChange={(e) => setExtensionsForm({ ...extensionsForm, telegramToken: e.target.value })}
+          />
+        </div>
+
+        {/* Google Gemini Token */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-purple-50 p-3 rounded-xl">
+              <Key className="text-purple-600" size={20} />
+            </div>
+            <div>
+              <h4 className="font-black text-black">Token Google Gemini</h4>
+              <p className="text-xs text-gray-500 font-bold">Inserisci il token API di Google Gemini</p>
+            </div>
+          </div>
+          <input
+            type="password"
+            placeholder="Inserisci token Google Gemini..."
+            className="w-full bg-gray-50 border-none rounded-xl p-4 text-sm font-bold"
+            value={extensionsForm.googleGeminiToken}
+            onChange={(e) => setExtensionsForm({ ...extensionsForm, googleGeminiToken: e.target.value })}
+          />
+        </div>
+
+        {/* WhatsApp Token */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-green-50 p-3 rounded-xl">
+              <MessageSquare className="text-green-600" size={20} />
+            </div>
+            <div>
+              <h4 className="font-black text-black">Token WhatsApp</h4>
+              <p className="text-xs text-gray-500 font-bold">Inserisci il token API di WhatsApp</p>
+            </div>
+          </div>
+          <input
+            type="password"
+            placeholder="Inserisci token WhatsApp..."
+            className="w-full bg-gray-50 border-none rounded-xl p-4 text-sm font-bold"
+            value={extensionsForm.whatsappToken}
+            onChange={(e) => setExtensionsForm({ ...extensionsForm, whatsappToken: e.target.value })}
+          />
+        </div>
+
+        {/* Gemini Token (generico) */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-orange-50 p-3 rounded-xl">
+              <Key className="text-orange-600" size={20} />
+            </div>
+            <div>
+              <h4 className="font-black text-black">Token Gemini</h4>
+              <p className="text-xs text-gray-500 font-bold">Inserisci il token API di Gemini</p>
+            </div>
+          </div>
+          <input
+            type="password"
+            placeholder="Inserisci token Gemini..."
+            className="w-full bg-gray-50 border-none rounded-xl p-4 text-sm font-bold"
+            value={extensionsForm.geminiToken}
+            onChange={(e) => setExtensionsForm({ ...extensionsForm, geminiToken: e.target.value })}
+          />
+        </div>
+
+        {/* Salva Button */}
+        <button
+          onClick={handleSaveExtensions}
+          disabled={extensionsSaving}
+          className="w-full py-5 bg-black text-white rounded-[2rem] font-black shadow-2xl flex items-center justify-center space-x-2 disabled:opacity-50"
+        >
+          {extensionsSaving ? (
+            <>
+              <Loader2 className="animate-spin" size={20} />
+              <span>Salvataggio...</span>
+            </>
+          ) : (
+            <>
+              <Save size={20} />
+              <span>Salva Token</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
 
   const renderBep = () => (
     <div className="space-y-8 animate-in slide-in-from-right duration-500 pb-24">
@@ -398,6 +548,13 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
           </div>
           <ChevronRight size={18} className="text-gray-300" />
         </button>
+        <button onClick={() => setActiveTab('extensions')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex items-center justify-between active:scale-[0.98] transition-all">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-yellow-50 text-yellow-600 rounded-2xl"><Zap size={24}/></div>
+            <p className="font-black text-sm">Estensioni</p>
+          </div>
+          <ChevronRight size={18} className="text-gray-300" />
+        </button>
       </div>
       <div className="pt-8">
         <button onClick={onSignOut} className="w-full bg-red-50 text-red-600 p-6 rounded-[2.5rem] flex items-center justify-center space-x-2 font-black uppercase text-[10px] active:scale-95 transition-all border border-red-100">
@@ -420,6 +577,7 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
          activeTab === 'bep' ? renderBep() : 
          activeTab === 'employees' ? renderEmployees() : 
          activeTab === 'suppliers' ? renderMain() : 
+         activeTab === 'extensions' ? renderExtensions() :
           <div className="p-12 text-center text-gray-300 font-black uppercase text-[10px]">Sincronizzazione...</div>}
       </div>
 

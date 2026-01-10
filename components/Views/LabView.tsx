@@ -9,6 +9,7 @@ import { SubRecipe, Ingredient, ComponentUsage, Unit, Supplier } from '../../typ
 import { calculateSubRecipeCostPerKg } from '../../services/calculator';
 import { GoogleGenAI, Type } from "@google/genai";
 import { normalizeText, isLabCategory } from '../../utils/textUtils';
+import ConfirmationModal from '../ConfirmationModal';
 
 interface LabViewProps {
   subRecipes: SubRecipe[];
@@ -1059,20 +1060,23 @@ const LabView: React.FC<LabViewProps> = ({ subRecipes, ingredients, suppliers, o
         })}
       </div>
 
+      {/* Confirmation Modal per eliminazione */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-[300] flex items-end justify-center px-4 pb-10 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-sm space-y-3 animate-in slide-in-from-bottom-10">
-            <div className="bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl">
-              <div className="px-6 py-5 text-center border-b border-gray-100">
-                <AlertTriangle className="mx-auto text-red-500 mb-2" size={24} />
-                <h4 className="text-sm font-black text-black uppercase">Elimina Topping</h4>
-                <p className="text-[11px] text-gray-500 mt-1">L'azione è irreversibile.</p>
-              </div>
-              <button onClick={() => { if(onDelete) onDelete(confirmDeleteId); setConfirmDeleteId(null); }} className="w-full py-4 text-red-600 font-black text-base active:bg-red-50 transition-colors">Elimina Definitivamente</button>
-            </div>
-            <button onClick={() => setConfirmDeleteId(null)} className="w-full bg-white py-4 rounded-2xl font-black text-base text-black shadow-xl">Annulla</button>
-          </div>
-        </div>
+        <ConfirmationModal
+          isOpen={true}
+          title="Conferma Eliminazione"
+          message={`Sei sicuro di voler eliminare "${subRecipes.find(s => s.id === confirmDeleteId)?.name || 'questo topping'}"? L'azione non può essere annullata.`}
+          confirmText="Elimina"
+          cancelText="Annulla"
+          onConfirm={() => {
+            if (onDelete && confirmDeleteId) {
+              onDelete(confirmDeleteId);
+            }
+            setConfirmDeleteId(null);
+          }}
+          onCancel={() => setConfirmDeleteId(null)}
+          variant="danger"
+        />
       )}
     </div>
   );

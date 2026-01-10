@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, MoreVertical, Edit2, User, Trash2, Download, Mail, Phone, Calendar, X } from 'lucide-react';
 import { Client } from '../../types';
 import { fetchCRMClients } from '../../services/crm';
-import { deleteData } from '../../services/database';
+import { deleteData, deleteAllData } from '../../services/database';
+import ConfirmationModal, { AlertModal } from '../ConfirmationModal';
 
 interface ClientsViewProps {
   userId: string;
@@ -92,6 +93,24 @@ const ClientsView: React.FC<ClientsViewProps> = ({ userId, onClientSelect }) => 
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!userId) return;
+    
+    setIsDeletingAll(true);
+    try {
+      const deletedCount = await deleteAllData(userId, 'crmClients');
+      setClients([]);
+      setFilteredClients([]);
+      setShowDeleteAllModal(false);
+      alert(`✅ Eliminati ${deletedCount} clienti con successo!`);
+    } catch (error) {
+      console.error('Error deleting all clients:', error);
+      alert('❌ Errore nell\'eliminazione dei clienti.');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   const handleExportCSV = () => {
     const headers = ['Nome', 'Email', 'Telefono', 'Indirizzo', 'Città', 'P.IVA'];
     const rows = filteredClients.map(client => [
@@ -151,14 +170,24 @@ const ClientsView: React.FC<ClientsViewProps> = ({ userId, onClientSelect }) => 
               }
             </p>
           </div>
-          <button
-            onClick={handleExportCSV}
-            disabled={filteredClients.length === 0}
-            className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download size={16} />
-            <span>Esporta</span>
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              disabled={filteredClients.length === 0 || isDeletingAll}
+              className="bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={16} />
+              <span>Elimina Tutti</span>
+            </button>
+            <button
+              onClick={handleExportCSV}
+              disabled={filteredClients.length === 0}
+              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download size={16} />
+              <span>Esporta</span>
+            </button>
+          </div>
         </div>
 
         {/* Barra di Ricerca */}
@@ -405,6 +434,18 @@ const ClientsView: React.FC<ClientsViewProps> = ({ userId, onClientSelect }) => 
           </div>
         </div>
       )}
+
+      {/* Modal Conferma Eliminazione Tutti */}
+      <ConfirmationModal
+        isOpen={showDeleteAllModal}
+        title="Elimina Tutti i Clienti"
+        message={`Sei sicuro di voler eliminare tutti i ${clients.length} clienti dal database? Questa azione non può essere annullata.`}
+        confirmText="Elimina Tutti"
+        cancelText="Annulla"
+        onConfirm={handleDeleteAll}
+        onCancel={() => setShowDeleteAllModal(false)}
+        variant="danger"
+      />
     </div>
   );
 };

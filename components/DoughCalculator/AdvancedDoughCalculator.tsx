@@ -10,6 +10,7 @@ import { FlourSelector } from './FlourSelector';
 import { IOSStepper } from './IOSStepper';
 import { RecipeSummary } from './RecipeSummary';
 import { generateRecipePDF } from '../../utils/pdfGenerator';
+import { AlertModal } from '../ConfirmationModal';
 
 interface AdvancedCalculatorFormData {
   recipeName: string;
@@ -239,6 +240,10 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
   const [showSupModal, setShowSupModal] = useState(false);
   const [supForm, setSupForm] = useState<Partial<Supplier>>({ name: '', phone: '', category: '', deliveryDays: [] });
   const [supLoading, setSupLoading] = useState(false);
+
+  // Modal states
+  const [successModal, setSuccessModal] = useState<{ isOpen: boolean; title: string; message: string }>({ isOpen: false, title: '', message: '' });
+  const [errorModal, setErrorModal] = useState<{ isOpen: boolean; title: string; message: string }>({ isOpen: false, title: '', message: '' });
 
     
   // Categorie ingredienti
@@ -529,6 +534,7 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
   }, [ingredients, additionalIngredients]);
   
   return (
+    <>
     <div className="space-y-6 pb-12">
       {/* Errori validazione */}
       {errors.length > 0 && (
@@ -1839,13 +1845,21 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
                   }
                 });
                 
-                alert('✅ Ricetta salvata e PDF generato con successo!');
+                setSuccessModal({
+                  isOpen: true,
+                  title: 'Ricetta Salvata',
+                  message: 'Ricetta salvata e PDF generato con successo!'
+                });
                 
                 // NON resettare il form: mantieni tutto visibile per permettere export aggiuntivi
                 // Se vuoi creare una nuova ricetta, puoi cliccare "X" per chiudere il calcolatore
               } catch (error) {
                 console.error('Errore nel salvataggio:', error);
-                alert(`Errore nel salvataggio: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+                setErrorModal({
+                  isOpen: true,
+                  title: 'Errore nel Salvataggio',
+                  message: error instanceof Error ? error.message : 'Errore sconosciuto'
+                });
               }
             }
                 }}
@@ -2292,6 +2306,23 @@ const AdvancedDoughCalculator: React.FC<AdvancedDoughCalculatorProps> = ({
       )}
 
     </div>
+      <AlertModal
+        isOpen={successModal.isOpen}
+        title={successModal.title}
+        message={successModal.message}
+        buttonText="Ok"
+        onClose={() => setSuccessModal({ isOpen: false, title: '', message: '' })}
+        variant="success"
+      />
+      <AlertModal
+        isOpen={errorModal.isOpen}
+        title={errorModal.title}
+        message={errorModal.message}
+        buttonText="Ok"
+        onClose={() => setErrorModal({ isOpen: false, title: '', message: '' })}
+        variant="danger"
+      />
+    </>
   );
 };
 

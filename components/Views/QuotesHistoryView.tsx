@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MoreVertical, Edit2, Download, Calendar, X, FileText, Printer, Eye } from 'lucide-react';
+import { Search, Edit2, Calendar, X, FileText, Printer, Trash2 } from 'lucide-react';
 import { Quote, Client } from '../../types';
-import { syncData } from '../../services/database';
+import { syncData, deleteData } from '../../services/database';
 import { Timestamp } from 'firebase/firestore';
+import ConfirmationModal, { AlertModal } from '../ConfirmationModal';
 
 interface QuotesHistoryViewProps {
   userId: string;
@@ -16,6 +17,33 @@ const QuotesHistoryView: React.FC<QuotesHistoryViewProps> = ({ userId, onQuoteSe
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    buttonText?: string;
+    onClose: () => void;
+    variant?: 'danger' | 'warning' | 'info' | 'success';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onClose: () => {},
+  });
 
   // Carica preventivi all'avvio
   useEffect(() => {
@@ -117,10 +145,24 @@ const QuotesHistoryView: React.FC<QuotesHistoryViewProps> = ({ userId, onQuoteSe
     }
   };
 
+  const showAlert = (title: string, message: string, onClose = () => {}, variant: 'danger' | 'warning' | 'info' | 'success' = 'info') => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      buttonText: 'Ok',
+      onClose: () => {
+        onClose();
+        setAlertModal({ ...alertModal, isOpen: false });
+      },
+      variant,
+    });
+  };
+
   const handlePrintQuote = (quote: Quote) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Impossibile aprire la finestra di stampa. Verifica che i popup non siano bloccati.');
+      showAlert('Avviso', 'Impossibile aprire la finestra di stampa. Verifica che i popup non siano bloccati.', () => {}, 'warning');
       return;
     }
 
@@ -214,172 +256,185 @@ const QuotesHistoryView: React.FC<QuotesHistoryViewProps> = ({ userId, onQuoteSe
     }, 500);
   };
 
+  const showConfirm = (title: string, message: string, onConfirm: () => void, confirmText = 'Elimina Definitivamente', cancelText = 'Annulla', variant: 'danger' | 'warning' | 'info' = 'danger') => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      confirmText,
+      cancelText,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal({ ...confirmModal, isOpen: false });
+      },
+      variant,
+    });
+  };
+
+  const handleDelete = async (quote: Quote) => {
+    showConfirm(
+      'Conferma Eliminazione',
+      `Sei sicuro di voler eliminare il preventivo per "${quote.client?.name || 'Cliente Sconosciuto'}"? L'azione non può essere annullata.`,
+      async () => {
+        try {
+          await deleteData(userId, 'quotes', quote.id);
+        } catch (error) {
+          console.error('Error deleting quote:', error);
+          showAlert('Errore', 'Errore nell\'eliminazione del preventivo.', () => {}, 'danger');
+        }
+      },
+      'Elimina',
+      'Annulla',
+      'danger'
+    );
+  };
+
   return (
-    <div className="space-y-6 pb-24 animate-in fade-in duration-700">
-      {/* Header */}
-      <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-black text-black mb-2">Storico Preventivi</h1>
-            <p className="text-sm text-gray-500">Visualizza e gestisci tutti i preventivi salvati</p>
-          </div>
-        </div>
-
-        {/* Search and Filters */}
-        <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Cerca per cliente, email, P.IVA..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold placeholder:text-gray-300 focus:outline-none"
-            />
-          </div>
-
-          {/* Status Filter */}
-          <div className="flex gap-2 flex-wrap">
-            <button
+    <>
+      <div className="space-y-6 pb-12">
+        <div className="space-y-4 px-2">
+          {/* Category Filters */}
+          <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+            <button 
               onClick={() => setSelectedStatus(null)}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                selectedStatus === null
-                  ? 'bg-black text-white'
-                  : 'bg-gray-100 text-gray-600'
-              }`}
+              className={`whitespace-nowrap px-5 py-2.5 rounded-full text-[10px] font-black uppercase transition-all ${!selectedStatus ? 'bg-black text-white shadow-xl scale-105' : 'bg-white text-gray-400 border border-gray-100'}`}
             >
               Tutti
             </button>
-            <button
+            <button 
               onClick={() => setSelectedStatus('draft')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                selectedStatus === 'draft'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-100 text-gray-600'
-              }`}
+              className={`whitespace-nowrap px-5 py-2.5 rounded-full text-[10px] font-black uppercase transition-all ${selectedStatus === 'draft' ? 'bg-black text-white shadow-xl scale-105' : 'bg-white text-gray-400 border border-gray-100'}`}
             >
               Bozze
             </button>
-            <button
+            <button 
               onClick={() => setSelectedStatus('sent')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                selectedStatus === 'sent'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-100 text-gray-600'
-              }`}
+              className={`whitespace-nowrap px-5 py-2.5 rounded-full text-[10px] font-black uppercase transition-all ${selectedStatus === 'sent' ? 'bg-black text-white shadow-xl scale-105' : 'bg-white text-gray-400 border border-gray-100'}`}
             >
               Inviati
             </button>
-            <button
+            <button 
               onClick={() => setSelectedStatus('accepted')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                selectedStatus === 'accepted'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-100 text-gray-600'
-              }`}
+              className={`whitespace-nowrap px-5 py-2.5 rounded-full text-[10px] font-black uppercase transition-all ${selectedStatus === 'accepted' ? 'bg-black text-white shadow-xl scale-105' : 'bg-white text-gray-400 border border-gray-100'}`}
             >
               Accettati
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Quotes List */}
-      {isLoading ? (
-        <div className="bg-white rounded-[2.5rem] p-12 text-center">
-          <div className="w-8 h-8 border-4 border-black/10 border-t-black rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-gray-500">Caricamento preventivi...</p>
+          <div className="relative">
+            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Cerca preventivo..." 
+              className="w-full bg-gray-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold" 
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)} 
+            />
+          </div>
         </div>
-      ) : filteredQuotes.length === 0 ? (
-        <div className="bg-white rounded-[2.5rem] p-12 text-center">
-          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-lg font-bold text-gray-500 mb-2">Nessun preventivo trovato</p>
-          <p className="text-sm text-gray-400">
-            {searchQuery || selectedStatus
-              ? 'Prova a modificare i filtri di ricerca'
-              : 'Inizia creando il tuo primo preventivo'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredQuotes.map((quote) => (
-            <div
-              key={quote.id}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-base uppercase shadow-sm">
-                      {quote.client?.name?.charAt(0) || 'C'}
+
+        {/* Quotes List */}
+        {isLoading ? (
+          <div className="bg-white rounded-[2.5rem] p-12 text-center">
+            <div className="w-8 h-8 border-4 border-black/10 border-t-black rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-sm text-gray-500">Caricamento preventivi...</p>
+          </div>
+        ) : filteredQuotes.length === 0 ? (
+          <div className="bg-white rounded-[2.5rem] p-12 text-center">
+            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-lg font-bold text-gray-500 mb-2">Nessun preventivo trovato</p>
+            <p className="text-sm text-gray-400">
+              {searchQuery || selectedStatus
+                ? 'Prova a modificare i filtri di ricerca'
+                : 'Inizia creando il tuo primo preventivo'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4 px-2">
+            {filteredQuotes.map((quote) => {
+              const margin = (quote.total || 0) - (quote.subtotal || 0);
+              return (
+                <div key={quote.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-xl font-black">{quote.client?.name || 'Cliente Sconosciuto'}</h3>
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase ${getStatusColor(quote.status || 'draft')}`}>
+                        {getStatusLabel(quote.status || 'draft')}
+                      </span>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-black text-black mb-1">
-                        {quote.client?.name || 'Cliente Sconosciuto'}
-                      </h3>
-                      <div className="flex items-center gap-4 flex-wrap">
-                        {quote.eventDate && (
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <Calendar size={12} />
-                            <span>{formatDate(quote.eventDate)}</span>
-                          </div>
-                        )}
-                        {quote.expectedPeople && (
-                          <span className="text-xs text-gray-500">
-                            {quote.expectedPeople} persone
-                          </span>
-                        )}
-                        <span
-                          className={`px-3 py-1 rounded-lg text-xs font-black ${getStatusColor(
-                            quote.status || 'draft'
-                          )}`}
-                        >
-                          {getStatusLabel(quote.status || 'draft')}
-                        </span>
+                    <div className="flex mt-4 space-x-8">
+                      <div>
+                        <p className="text-[9px] uppercase text-gray-300 font-black">Totale</p>
+                        <p className="text-lg font-black text-black">€ {formatCurrency(quote.total || 0).replace('€', '').trim()}</p>
                       </div>
+                      {quote.eventDate && (
+                        <div>
+                          <p className="text-[9px] uppercase text-gray-300 font-black">Data Evento</p>
+                          <p className="text-lg font-black text-black">{formatDate(quote.eventDate)}</p>
+                        </div>
+                      )}
+                      {quote.expectedPeople && (
+                        <div>
+                          <p className="text-[9px] uppercase text-gray-300 font-black">Persone</p>
+                          <p className="text-lg font-black text-black">{quote.expectedPeople}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-6 mt-4">
-                    <div>
-                      <span className="text-xs font-black uppercase text-gray-400">Totale</span>
-                      <p className="text-xl font-black text-black mt-1">
-                        {formatCurrency(quote.total || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-black uppercase text-gray-400">Creato il</span>
-                      <p className="text-sm font-bold text-gray-600 mt-1">
-                        {formatDate(quote.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    onClick={() => handlePrintQuote(quote)}
-                    className="p-3 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
-                    title="Stampa preventivo"
-                  >
-                    <Printer size={18} className="text-gray-700" />
-                  </button>
-                  {onEditQuote && (
-                    <button
-                      onClick={() => onEditQuote(quote)}
-                      className="p-3 bg-blue-100 hover:bg-blue-200 rounded-xl transition-colors"
-                      title="Modifica preventivo"
+                  <div className="flex flex-col space-y-3">
+                    <button 
+                      onClick={() => handlePrintQuote(quote)} 
+                      className="bg-gray-50 p-3 rounded-2xl text-gray-400 border border-gray-100"
+                      title="Stampa preventivo"
                     >
-                      <Edit2 size={18} className="text-blue-700" />
+                      <Printer size={18} />
                     </button>
-                  )}
+                    {onEditQuote && (
+                      <button 
+                        onClick={() => onEditQuote(quote)} 
+                        className="bg-gray-50 p-3 rounded-2xl text-gray-400 border border-gray-100"
+                        title="Modifica preventivo"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleDelete(quote)} 
+                      className="bg-red-50 p-3 rounded-2xl text-red-300 border border-red-50"
+                      title="Elimina preventivo"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText={confirmModal.cancelText}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+          variant={confirmModal.variant}
+        />
+
+        {/* Alert Modal */}
+        <AlertModal
+          isOpen={alertModal.isOpen}
+          title={alertModal.title}
+          message={alertModal.message}
+          buttonText={alertModal.buttonText}
+          onClose={alertModal.onClose}
+          variant={alertModal.variant}
+        />
+      </div>
+    </>
   );
 };
 
