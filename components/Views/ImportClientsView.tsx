@@ -1,6 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, Download, X } from 'lucide-react';
 import { Client } from '../../types';
+import { db } from '../../firebase';
+import { collection, doc, setDoc, Timestamp, writeBatch } from 'firebase/firestore';
+import { saveData } from '../../services/database';
 
 interface ImportClientsViewProps {
   userId: string;
@@ -239,46 +242,115 @@ const ImportClientsView: React.FC<ImportClientsViewProps> = ({ userId, onImportC
       return;
     }
 
+    if (!userId) {
+      alert('⚠️ User ID non disponibile. Assicurati di essere loggato.');
+      return;
+    }
+
     setIsImporting(true);
     setResult(null);
 
     try {
-      const response = await fetch('/api/crm/import', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          clients: clientsToImport,
-        }),
-      });
+      // Usa il client SDK Firebase direttamente invece dell'API endpoint
+      // Questo funziona perché l'utente è già autenticato
+      const clientsRef = collection(db, `users/${userId}/crmClients`);
+      
+      let imported = 0;
+      let errors: Array<{ index: number; error: string; client: any }> = [];
 
-      const data = await response.json();
+      // Firestore permette max 500 operazioni per batch
+      // Dividi in batch più piccoli se necessario
+      const BATCH_SIZE = 500;
+      const totalBatches = Math.ceil(clientsToImport.length / BATCH_SIZE);
+      
+      // Processa in batch multipli
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const batchRef = writeBatch(db);
+        const startIndex = batchIndex * BATCH_SIZE;
+        const endIndex = Math.min(startIndex + BATCH_SIZE, clientsToImport.length);
+        let batchOperations = 0;
+        
+        for (let i = startIndex; i < endIndex; i++) {
+          const clientData = clientsToImport[i];
+          
+          try {
+            // Mappa i dati al formato Client standard
+            const clientId = clientData.id || clientData.client_id || `platform_${Date.now()}_${i}`;
+            const clientName = clientData.name || clientData.company_name || clientData.business_name || '';
+            const clientEmail = clientData.email || clientData.email_address || '';
 
-      if (response.ok && data.success) {
-        setResult(data);
-        if (onImportComplete) {
-          onImportComplete();
+            // Valida che ci siano almeno nome o email
+            if (!clientName && !clientEmail) {
+              errors.push({
+                index: i,
+                error: 'Cliente senza nome o email',
+                client: clientData
+              });
+              continue;
+            }
+
+            const client = {
+              id: clientId,
+              name: clientName,
+              email: clientEmail,
+              phone: clientData.phone || clientData.phone_number || clientData.telephone || '',
+              address: clientData.address || clientData.street_address || clientData.full_address || '',
+              city: clientData.city || '',
+              postalCode: clientData.postal_code || clientData.postcode || clientData.zip_code || '',
+              country: clientData.country || clientData.country_code || 'IT',
+              vat_number: clientData.vat_number || clientData.vat || clientData.piva || clientData.tax_id || '',
+              // Metadati
+              source: 'platform_import',
+              importedAt: Timestamp.now(),
+              userId: userId,
+              updatedAt: Timestamp.now(),
+            };
+
+            // Aggiungi al batch write
+            const clientDocRef = doc(clientsRef, clientId);
+            batchRef.set(clientDocRef, client, { merge: true });
+            batchOperations++;
+            imported++;
+
+          } catch (error) {
+            errors.push({
+              index: i,
+              error: error instanceof Error ? error.message : 'Unknown error',
+              client: clientData
+            });
+          }
         }
-      } else {
-        setResult({
-          success: false,
-          message: data.message || 'Errore durante l\'importazione',
-          stats: {
-            total: clientsToImport.length,
-            imported: 0,
-            updated: 0,
-            errors: clientsToImport.length,
-          },
-          errors: data.errors,
-        });
+        
+        // Commit del batch se ci sono operazioni
+        if (batchOperations > 0) {
+          await batchRef.commit();
+          console.log(`[ImportClientsView] Batch ${batchIndex + 1}/${totalBatches} completato: ${batchOperations} clienti`);
+        }
       }
+
+      const finalResult: ImportResult = {
+        success: true,
+        message: `Importazione completata: ${imported} clienti importati`,
+        stats: {
+          total: clientsToImport.length,
+          imported,
+          updated: imported, // Ogni import è sia nuovo che aggiornato (merge)
+          errors: errors.length
+        },
+        errors: errors.length > 0 ? errors : undefined
+      };
+
+      setResult(finalResult);
+      
+      if (onImportComplete) {
+        onImportComplete();
+      }
+
     } catch (error) {
       console.error('Error importing clients:', error);
       setResult({
         success: false,
-        message: 'Errore di connessione durante l\'importazione',
+        message: error instanceof Error ? error.message : 'Errore durante l\'importazione',
         stats: {
           total: clientsToImport.length,
           imported: 0,
