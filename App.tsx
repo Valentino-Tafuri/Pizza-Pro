@@ -21,6 +21,7 @@ import StockAlerts from './components/StockAlerts';
 import PreparationSettingsView from './components/Views/PreparationSettingsView';
 import MarketingOverview from './components/Views/Marketing/MarketingOverview';
 import GoogleView from './components/Views/Marketing/GoogleView';
+import CreateQuoteView from './components/Views/CreateQuoteView';
 import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
 import { generateReviewResponse } from './services/aiReviewResponder';
@@ -682,6 +683,13 @@ const App: React.FC = () => {
         }}
       />;
       case 'profile': return <ProfileView userData={userData} onUpdate={handleUpdateUserData} onSignOut={handleSignOut} />;
+      case 'create-quote': return <CreateQuoteView 
+        userId={user?.uid || ''}
+        onSave={async (quote) => {
+          // Quote is already saved in CreateQuoteView, this is just for additional handling if needed
+          console.log('[App] Quote saved:', quote);
+        }}
+      />;
       default: return <DashboardView 
         menu={menu} 
         ingredients={ingredients} 
@@ -719,7 +727,9 @@ const App: React.FC = () => {
       'profile': 'PROFILO UTENTE',
       'marketing': 'MARKETING',
       'marketing-overview': 'PANORAMICA',
-      'marketing-google': 'GOOGLE'
+      'marketing-google': 'GOOGLE',
+      'quotes': 'PREVENTIVI',
+      'create-quote': 'NUOVO PREVENTIVO'
     };
     return titles[view] || view.toUpperCase();
   };

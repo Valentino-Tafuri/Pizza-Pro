@@ -254,4 +254,44 @@ export interface AIReviewResponse {
   sentiment: string;
 }
 
-export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'custom-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile' | 'marketing' | 'marketing-overview' | 'marketing-google';
+// Quotes & CRM Types
+export interface Client {
+  id: string;
+  name: string;
+  address?: string;
+  email?: string;
+  vat_number?: string; // P.IVA
+  phone?: string;
+  city?: string;
+  postalCode?: string;
+  country?: string;
+}
+
+export interface QuoteItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  unit?: string; // e.g., 'pz', 'kg', 'h'
+  total: number;
+}
+
+export interface Quote {
+  id: string;
+  quoteNumber?: string; // Numero preventivo (es. PREV-2024-001)
+  clientId: string;
+  client: Client; // Snapshot dei dati cliente al momento della creazione
+  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  items: QuoteItem[];
+  subtotal: number;
+  taxRate?: number; // Percentuale IVA (es. 22%)
+  taxAmount?: number;
+  total: number;
+  notes?: string;
+  validUntil?: Date | any; // Data di scadenza del preventivo
+  createdAt: Date | any;
+  updatedAt: Date | any;
+  createdBy: string; // userId
+}
+
+export type ViewType = 'dashboard' | 'economato' | 'lab' | 'menu' | 'laboratorio' | 'inventario' | 'inventario-magazzino' | 'inventario-etichette' | 'inventario-scan' | 'warehouse' | 'fifo-labels' | 'custom-labels' | 'scan' | 'prep-settings' | 'settings' | 'settings-prefermenti' | 'settings-assets' | 'settings-staff' | 'settings-suppliers' | 'profile' | 'marketing' | 'marketing-overview' | 'marketing-google' | 'quotes' | 'create-quote';
