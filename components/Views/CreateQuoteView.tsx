@@ -21,12 +21,18 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({ userId, onSave }) => 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch all clients on mount
+  // Fetch all clients on mount (solo per l'utente corrente)
   useEffect(() => {
     const loadClients = async () => {
+      if (!userId) {
+        console.warn('[CreateQuoteView] userId non disponibile');
+        return;
+      }
+      
       setIsLoading(true);
       try {
-        const fetchedClients = await fetchCRMClients();
+        // Passa userId per caricare solo i clienti dell'utente
+        const fetchedClients = await fetchCRMClients(undefined, userId);
         setClients(fetchedClients);
         setFilteredClients(fetchedClients);
       } catch (error) {
@@ -37,7 +43,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({ userId, onSave }) => 
       }
     };
     loadClients();
-  }, []);
+  }, [userId]);
 
   // Filter clients based on search query
   useEffect(() => {
