@@ -24,6 +24,7 @@ import GoogleView from './components/Views/Marketing/GoogleView';
 import CreateQuoteView from './components/Views/CreateQuoteView';
 import ImportClientsView from './components/Views/ImportClientsView';
 import ClientsView from './components/Views/ClientsView';
+import QuotesHistoryView from './components/Views/QuotesHistoryView';
 import { syncData, saveData, deleteData, deleteAllData } from './services/database';
 import { ViewType, Ingredient, SubRecipe, MenuItem, Supplier, Employee, UserData, Preparation, FifoLabel, StockMovement, Review, PlatformConnection, ReviewStats, ReviewPlatform, AIReviewResponse } from './types';
 import { generateReviewResponse } from './services/aiReviewResponder';
@@ -706,6 +707,7 @@ const App: React.FC = () => {
           return id;
         }}
         onAddSubRecipe={(sub) => handleSave('subRecipes', sub)}
+        onNavigateToHistory={() => setActiveView('quotes-history')}
       />;
       case 'import-clients': return <ImportClientsView 
         userId={user?.uid || ''}
@@ -721,6 +723,14 @@ const App: React.FC = () => {
           setActiveView('create-quote');
           // Il cliente verrà passato via state o context se necessario
           console.log('[App] Cliente selezionato per preventivo:', client);
+        }}
+      />;
+      case 'quotes-history': return <QuotesHistoryView 
+        userId={user?.uid || ''}
+        onEditQuote={(quote) => {
+          // Naviga a "Modifica Preventivo" - per ora solo log
+          console.log('[App] Modifica preventivo:', quote);
+          setActiveView('create-quote');
         }}
       />;
       default: return <DashboardView 
@@ -763,6 +773,7 @@ const App: React.FC = () => {
       'marketing-google': 'GOOGLE',
       'quotes': 'PREVENTIVI',
       'create-quote': 'NUOVO PREVENTIVO',
+      'quotes-history': 'STORICO PREVENTIVI',
       'import-clients': 'IMPORTA CLIENTI',
       'clients': 'CLIENTI'
     };

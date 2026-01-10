@@ -18,6 +18,7 @@ interface CreateQuoteViewProps {
   onAddIngredient?: (ingredient: Ingredient) => Promise<string | undefined>;
   onAddSupplier?: (supplier: Supplier) => Promise<string | undefined>;
   onAddSubRecipe?: (subRecipe: SubRecipe) => void;
+  onNavigateToHistory?: () => void;
 }
 
 const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({ 
@@ -31,7 +32,8 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
   onAddMenuItem,
   onAddIngredient,
   onAddSupplier,
-  onAddSubRecipe
+  onAddSubRecipe,
+  onNavigateToHistory
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
@@ -62,6 +64,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
   const [eventDate, setEventDate] = useState('');
   const [expectedPeople, setExpectedPeople] = useState<number>(0);
   const [coverCost, setCoverCost] = useState<number>(0);
+  const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [eventMenuItems, setEventMenuItems] = useState<EventMenuItem[]>([]);
   const [eventBeverages, setEventBeverages] = useState<EventBeverage[]>([]);
   const [customDishes, setCustomDishes] = useState<CustomEventDish[]>([]);
@@ -71,12 +74,18 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCustomDishModal, setShowCustomDishModal] = useState(false);
   const [showCreateRecipeModal, setShowCreateRecipeModal] = useState(false);
+  const [showManualProductModal, setShowManualProductModal] = useState(false);
   const [newCustomDish, setNewCustomDish] = useState<Partial<CustomEventDish>>({
     name: '',
     description: '',
     ingredients: [],
     quantity: 1,
     unitPrice: 0,
+  });
+  const [manualProduct, setManualProduct] = useState({
+    name: '',
+    price: 0,
+    portion: 'full' as 'full' | 'half' | 'quarter',
   });
 
   // Fetch all clients on mount (solo per l'utente corrente)
@@ -128,7 +137,8 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node) &&
         searchInputRef.current &&
-        !searchInputRef.current.contains(event.target as Node)
+        !searchInputRef.current.contains(event.target as Node) &&
+        !selectedClient // Non chiudere se c'è un cliente selezionato
       ) {
         setIsSearchOpen(false);
       }
@@ -136,15 +146,21 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [selectedClient]);
 
   const handleClientSelect = (client: Client) => {
-    setSelectedClient(client);
-    setSearchQuery('');
-    setIsSearchOpen(false);
-    if (searchInputRef.current) {
-      searchInputRef.current.blur();
-    }
+    console.log('Selecting client:', client);
+    // Usa una funzione per assicurarsi che lo stato venga aggiornato correttamente
+    setSelectedClient(() => client);
+    setSearchQuery(() => '');
+    setIsSearchOpen(() => false);
+    // Piccolo delay per assicurarsi che lo stato sia aggiornato prima di fare altre operazioni
+    setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.blur();
+        searchInputRef.current.value = '';
+      }
+    }, 0);
   };
 
   const handleClearClient = () => {
@@ -357,14 +373,56 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
     setEventMenuItems(eventMenuItems.filter(item => item.menuItemId !== menuItemId));
   };
 
+  const handleAddManualProduct = () => {
+    if (!manualProduct.name || !manualProduct.price || manualProduct.price <= 0) {
+      alert('Inserisci nome e prezzo validi per il prodotto.');
+      return;
+    }
+
+    let unitPrice = manualProduct.price;
+    if (manualProduct.portion === 'half') {
+      unitPrice = manualProduct.price / 2;
+    } else if (manualProduct.portion === 'quarter') {
+      unitPrice = manualProduct.price / 4;
+    }
+
+    const newItem: EventMenuItem = {
+      menuItemId: `manual_${Date.now()}`,
+      menuItemName: manualProduct.name,
+      portion: manualProduct.portion,
+      quantity: expectedPeople || 1,
+      unitPrice: unitPrice,
+      total: unitPrice * (expectedPeople || 1)
+    };
+
+    setEventMenuItems([...eventMenuItems, newItem]);
+    setShowManualProductModal(false);
+    setManualProduct({
+      name: '',
+      price: 0,
+      portion: 'full',
+    });
+  };
+
   const calculateEventMenuTotal = () => {
     const menuTotal = eventMenuItems.reduce((sum, item) => sum + (item.total || 0), 0);
     const beveragesTotal = eventBeverages.reduce((sum, beverage) => sum + (beverage.total || 0), 0);
     const customDishesTotal = customDishes.reduce((sum, dish) => sum + (dish.total || 0), 0);
-    const coverCostValue = parseFloat(String(coverCost)) || 0;
-    const expectedPeopleValue = parseInt(String(expectedPeople)) || 0;
+    // NON includere il costo del coperto nel totale, solo mostrarlo come voce separata
+    const total = menuTotal + beveragesTotal + customDishesTotal;
+    return total;
+  };
+
+  // Calcola il totale finale (menu + costo coperto) - usa finalPrice se modificato manualmente
+  const calculateFinalTotal = () => {
+    if (finalPrice !== null) {
+      return finalPrice;
+    }
+    const menuTotal = calculateEventMenuTotal();
+    const coverCostValue = coverCost !== null && coverCost !== undefined ? parseFloat(String(coverCost)) || 0 : 0;
+    const expectedPeopleValue = expectedPeople !== null && expectedPeople !== undefined ? parseInt(String(expectedPeople)) || 0 : 0;
     const coverTotal = coverCostValue * expectedPeopleValue;
-    return menuTotal + beveragesTotal + customDishesTotal + coverTotal;
+    return menuTotal + coverTotal;
   };
 
   const handlePrintQuote = () => {
@@ -373,15 +431,17 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    try {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Impossibile aprire la finestra di stampa. Verifica che i popup non siano bloccati.');
+        return;
+      }
 
     const menuItemsHtml = eventMenuItems.map(item => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.menuItemName}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.portion === 'half' ? '1/2' : item.portion === 'quarter' ? '1/4' : 'Intera'}</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${item.unitPrice.toFixed(2)}</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${item.total.toFixed(2)}</td>
       </tr>
     `).join('');
@@ -389,23 +449,20 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
     const beveragesHtml = eventBeverages.map(beverage => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #eee;">${beverage.beverageName}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">-</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${beverage.quantity.toFixed(2)}l</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${beverage.unitPrice.toFixed(2)}/l</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${beverage.total.toFixed(2)}</td>
       </tr>
     `).join('');
 
     const coverCostHtml = coverCost && expectedPeople ? `
       <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #eee;" colspan="2">Costo Coperto</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee;">Costo Coperto</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${expectedPeople} pz</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${coverCost.toFixed(2)}</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${((coverCost || 0) * (expectedPeople || 0)).toFixed(2)}</td>
       </tr>
     ` : '';
 
-    const total = calculateEventMenuTotal();
+    const total = calculateFinalTotal();
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -446,9 +503,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
             <thead>
               <tr>
                 <th>Descrizione</th>
-                <th style="text-align: center;">Porzione</th>
                 <th style="text-align: center;">Quantità</th>
-                <th style="text-align: right;">Prezzo Unit.</th>
                 <th style="text-align: right;">Totale</th>
               </tr>
             </thead>
@@ -464,11 +519,32 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
         </body>
       </html>
     `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+      printWindow.document.close();
+      
+      // Usa requestAnimationFrame per assicurarsi che il contenuto sia caricato prima di stampare
+      printWindow.addEventListener('load', () => {
+        setTimeout(() => {
+          try {
+            printWindow.print();
+          } catch (err) {
+            console.error('Errore durante la stampa:', err);
+            alert('Errore durante la stampa. Prova a utilizzare la funzione di stampa del browser manualmente.');
+          }
+        }, 500);
+      });
+
+      // Fallback per browser che non supportano l'evento load
+      setTimeout(() => {
+        try {
+          printWindow.print();
+        } catch (err) {
+          console.error('Errore durante la stampa:', err);
+        }
+      }, 1000);
+    } catch (error) {
+      console.error('Errore durante la creazione della finestra di stampa:', error);
+      alert('Errore durante la stampa. Prova a utilizzare la funzione di stampa del browser manualmente.');
+    }
   };
 
   const handlePortionChange = (menuItemId: string, portion: 'full' | 'half' | 'quarter') => {
@@ -570,14 +646,16 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
     setIsSaving(true);
     try {
+      const finalTotal = finalPrice !== null ? finalPrice : calculateFinalTotal();
+      
       const draftQuote: Quote = {
         id: `quote_${Date.now()}`,
         clientId: selectedClient.id,
         client: selectedClient,
         status: 'draft',
         items: [],
-        subtotal: 0,
-        total: 0,
+        subtotal: calculateEventMenuTotal(),
+        total: finalTotal,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
         createdBy: userId,
@@ -615,6 +693,23 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-700">
+      {/* Header con pulsante Storico Preventivi */}
+      <div className="flex items-center justify-end mb-4">
+        <button
+          onClick={() => {
+            if (onNavigateToHistory) {
+              onNavigateToHistory();
+            } else {
+              console.warn('onNavigateToHistory not provided');
+            }
+          }}
+          className="flex items-center gap-2 px-4 py-3 bg-black hover:bg-gray-800 text-white rounded-xl text-sm font-black transition-all active:scale-95 shadow-lg"
+        >
+          <FileText size={18} />
+          <span>Storico Preventivi</span>
+        </button>
+      </div>
+
       {/* Client Selection Section */}
       {!selectedClient ? (
         <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
@@ -654,7 +749,7 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           </div>
 
           {/* Dropdown Results */}
-          {isSearchOpen && searchQuery && filteredClients.length > 0 && !isLoading && (
+          {isSearchOpen && searchQuery && filteredClients.length > 0 && !isLoading && !selectedClient && (
             <div className="absolute z-50 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-96 overflow-y-auto">
               <div className="py-2">
                 {filteredClients.slice(0, 10).map((client) => (
@@ -663,8 +758,10 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      console.log('Client clicked:', client);
                       handleClientSelect(client);
                     }}
+                    type="button"
                     className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
                   >
                     <div className="flex items-center space-x-4">
@@ -726,11 +823,17 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               </div>
             </div>
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 handleClearClient();
-                setIsSearchOpen(true);
-                setTimeout(() => searchInputRef.current?.focus(), 100);
+                // Piccolo delay per assicurarsi che lo stato sia aggiornato
+                setTimeout(() => {
+                  setIsSearchOpen(true);
+                  setTimeout(() => searchInputRef.current?.focus(), 100);
+                }, 0);
               }}
+              type="button"
               className="ml-4 px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-xs font-black text-gray-600 transition-all flex items-center gap-2 border border-gray-200"
             >
               <Edit2 size={14} />
@@ -743,42 +846,13 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
       {/* Quote Header Card - Shows selected client details */}
       {selectedClient && (
         <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 animate-in slide-in-from-top duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-                PREVENTIVO
-              </h3>
-              <p className="text-2xl font-black text-black tracking-tight">
-                Menu Evento
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleSaveDraft}
-                disabled={isSaving}
-                className="flex-1 bg-black text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Salvataggio...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save size={16} />
-                    <span>Salva Preventivo</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={handlePrintQuote}
-                disabled={!selectedClient || eventMenuItems.length === 0}
-                className="flex-1 bg-purple-600 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Printer size={16} />
-                <span>Stampa</span>
-              </button>
-            </div>
+          <div className="mb-6">
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+              PREVENTIVO
+            </h3>
+            <p className="text-2xl font-black text-black tracking-tight">
+              Menu Evento
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -899,8 +973,16 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                     type="number"
                     min="0"
                     step="0.01"
-                    value={coverCost || ''}
-                    onChange={(e) => setCoverCost(parseFloat(e.target.value) || 0)}
+                    value={coverCost !== null && coverCost !== undefined ? coverCost : ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '' || value === null) {
+                        setCoverCost(0);
+                      } else {
+                        const numValue = parseFloat(value);
+                        setCoverCost(isNaN(numValue) ? 0 : numValue);
+                      }
+                    }}
                     placeholder="0.00"
                     className="w-full bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-black/5"
                   />
@@ -920,6 +1002,24 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
               >
                 <Utensils size={18} />
                 <span>Menu</span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Opening manual product modal');
+                  setShowManualProductModal(true);
+                  setManualProduct({
+                    name: '',
+                    price: 0,
+                    portion: 'full',
+                  });
+                }}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all border border-gray-200"
+                type="button"
+              >
+                <Plus size={18} />
+                <span>Manuale</span>
               </button>
             </div>
           </div>
@@ -1031,6 +1131,28 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
                     </div>
                   );
                 })}
+                
+                {/* Pulsante + per aggiungere prodotto manuale */}
+                <div className="pt-3 border-t border-purple-50 mt-3">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('Opening manual product modal from list');
+                      setShowManualProductModal(true);
+                      setManualProduct({
+                        name: '',
+                        price: 0,
+                        portion: 'full',
+                      });
+                    }}
+                    type="button"
+                    className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all border border-gray-200 active:scale-95"
+                  >
+                    <Plus size={18} />
+                    <span>Aggiungi Prodotto Manuale</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1114,26 +1236,95 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
           )}
 
           {/* Totale Menu Evento */}
-          {(eventMenuItems.length > 0 || eventBeverages.length > 0 || (coverCost && expectedPeople)) && (
+          {(eventMenuItems.length > 0 || eventBeverages.length > 0 || coverCost || expectedPeople) && (
             <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100 mb-6 space-y-3">
-              {coverCost && expectedPeople && (
-                <div className="flex items-center justify-between pb-3 border-b border-green-200">
-                  <span className="text-xs font-black uppercase text-gray-600">Costo Coperto</span>
-                  <span className="text-lg font-black text-green-600">
-                    €{((coverCost || 0) * (expectedPeople || 0)).toFixed(2)} (€{coverCost.toFixed(2)} × {expectedPeople} pz)
-                  </span>
-                </div>
-              )}
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase text-gray-600">Totale Menu Evento</span>
-                <span className="text-2xl font-black text-green-600">
+                <span className="text-lg font-black text-green-600">
                   €{calculateEventMenuTotal().toFixed(2)}
                 </span>
+              </div>
+              <div className="pt-3 border-t border-green-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-black uppercase text-gray-600">Totale Finale</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={finalPrice !== null ? finalPrice : calculateFinalTotal()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || value === null) {
+                          setFinalPrice(null);
+                        } else {
+                          const numValue = parseFloat(value);
+                          setFinalPrice(isNaN(numValue) ? null : numValue);
+                        }
+                      }}
+                      className="w-32 bg-white border-2 border-green-300 rounded-xl px-4 py-2 text-2xl font-black text-green-700 text-right focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                    <button
+                      onClick={() => {
+                        const currentTotal = finalPrice !== null ? finalPrice : calculateFinalTotal();
+                        setFinalPrice(Math.round(currentTotal));
+                      }}
+                      className="px-3 py-2 bg-green-200 hover:bg-green-300 text-green-700 rounded-lg text-xs font-black transition-all active:scale-95"
+                      title="Arrotonda all'intero"
+                    >
+                      ≈
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFinalPrice(null);
+                      }}
+                      className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-black transition-all active:scale-95"
+                      title="Ripristina totale calcolato"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                {finalPrice !== null && finalPrice !== calculateFinalTotal() && (
+                  <div className="text-[10px] text-gray-500 font-semibold mt-2">
+                    Totale calcolato: €{calculateFinalTotal().toFixed(2)} | Differenza: €{(finalPrice - calculateFinalTotal()).toFixed(2)}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-      </div>
+          {/* Action Buttons - Alla fine del modulo */}
+          {selectedClient && (
+            <div className="flex gap-3 pt-6 border-t border-gray-100">
+              <button
+                onClick={handleSaveDraft}
+                disabled={isSaving}
+                className="flex-1 bg-black text-white px-6 py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Salvataggio...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    <span>Salva Preventivo</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handlePrintQuote}
+                disabled={!selectedClient || (eventMenuItems.length === 0 && eventBeverages.length === 0)}
+                className="flex-1 bg-purple-600 text-white px-6 py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Printer size={16} />
+                <span>Stampa</span>
+              </button>
+            </div>
+          )}
+        </div>
 
       {/* Add Dish Modal (Menu) */}
       {showAddDishModal && addDishSource === 'menu' && (
@@ -1547,6 +1738,153 @@ const CreateQuoteView: React.FC<CreateQuoteViewProps> = ({
         );
       })()}
 
+
+      {/* Manual Product Modal */}
+      {showManualProductModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
+                setShowManualProductModal(false);
+                setManualProduct({
+                  name: '',
+                  price: 0,
+                  portion: 'full',
+                });
+              }
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-black text-black">
+                Aggiungi Prodotto Manuale
+              </h3>
+              <button
+                onClick={() => {
+                  if (confirm('Chiudere la creazione? Le modifiche non salvate andranno perse.')) {
+                    setShowManualProductModal(false);
+                    setManualProduct({
+                      name: '',
+                      price: 0,
+                      portion: 'full',
+                    });
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black uppercase text-gray-400 mb-2 block">
+                  Nome Prodotto
+                </label>
+                <input
+                  type="text"
+                  value={manualProduct.name}
+                  onChange={(e) => setManualProduct({...manualProduct, name: e.target.value})}
+                  placeholder="Es: Servizio Extra"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-purple-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase text-gray-400 mb-2 block">
+                  Prezzo (€)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={manualProduct.price || ''}
+                  onChange={(e) => setManualProduct({...manualProduct, price: parseFloat(e.target.value) || 0})}
+                  placeholder="0.00"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-purple-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase text-gray-400 mb-3 block">
+                  Porzione
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setManualProduct({...manualProduct, portion: 'full'})}
+                    className={`flex-1 px-4 py-3 rounded-xl text-xs font-black transition-all ${
+                      manualProduct.portion === 'full'
+                        ? 'bg-purple-600 text-white shadow-lg'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    Intera
+                  </button>
+                  <button
+                    onClick={() => setManualProduct({...manualProduct, portion: 'half'})}
+                    className={`flex-1 px-4 py-3 rounded-xl text-xs font-black transition-all ${
+                      manualProduct.portion === 'half'
+                        ? 'bg-purple-600 text-white shadow-lg'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    1/2
+                  </button>
+                  <button
+                    onClick={() => setManualProduct({...manualProduct, portion: 'quarter'})}
+                    className={`flex-1 px-4 py-3 rounded-xl text-xs font-black transition-all ${
+                      manualProduct.portion === 'quarter'
+                        ? 'bg-purple-600 text-white shadow-lg'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    1/4
+                  </button>
+                </div>
+              </div>
+
+              {manualProduct.price > 0 && manualProduct.portion !== 'full' && (
+                <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                  <div className="text-xs font-black text-purple-600 mb-1">
+                    Prezzo Unitario Calcolato:
+                  </div>
+                  <div className="text-lg font-black text-purple-700">
+                    €{(manualProduct.portion === 'half' ? manualProduct.price / 2 : manualProduct.price / 4).toFixed(2)}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowManualProductModal(false);
+                    setManualProduct({
+                      name: '',
+                      price: 0,
+                      portion: 'full',
+                    });
+                  }}
+                  className="flex-1 bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-black text-sm shadow-lg active:scale-95 transition-all"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={handleAddManualProduct}
+                  disabled={!manualProduct.name || !manualProduct.price || manualProduct.price <= 0}
+                  className="flex-1 bg-purple-600 text-white px-6 py-3 rounded-xl font-black text-sm shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Aggiungi
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Client Modal */}
       {showNewClientModal && (
