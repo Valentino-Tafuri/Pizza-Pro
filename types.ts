@@ -98,8 +98,12 @@ export interface Ingredient {
   unit: Unit;
   pricePerUnit: number;
   category: string;
-  supplierId?: string;
+  supplierId?: string; // Deprecato, mantenuto per retrocompatibilità
   currentStock?: number; // Stock attuale (opzionale per retrocompatibilità)
+  // Nuovi campi per gestione multi-fornitore
+  fornitori_associati?: Array<{ nome: string; codice: string }>; // Lista fornitori con codice SKU
+  search_codici?: string[]; // Array codici per ricerca veloce
+  nomi_fornitori?: string[]; // Array nomi fornitori in minuscolo per ricerca
 }
 
 export interface ComponentUsage {

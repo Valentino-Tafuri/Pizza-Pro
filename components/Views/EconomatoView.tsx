@@ -1,8 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
-import { Search, Edit2, Plus, Trash2, X, AlertTriangle, PlusCircle, Check, Loader2, Tag, Truck, Calendar, Save, Phone, Upload, FileText, Download } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, Edit2, Plus, Trash2, X, AlertTriangle, PlusCircle, Check, Loader2, Tag, Truck, Calendar, Save, Phone, Upload, FileText, Download, MinusCircle } from 'lucide-react';
 import { Ingredient, Unit, Supplier } from '../../types';
 import { normalizeText } from '../../utils/textUtils';
+import ConfirmationModal from '../ConfirmationModal';
 
 interface EconomatoViewProps {
   ingredients: Ingredient[];
@@ -41,6 +42,11 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
   // Gestione Nuova Fornitore nel Form
   const [isAddingNewSupplier, setIsAddingNewSupplier] = useState(false);
   const [supForm, setSupForm] = useState<Partial<Supplier>>({ name: '', phone: '', category: '', deliveryDays: [] });
+  
+  // Gestione lista dinamica fornitori con codice SKU
+  const [fornitoriList, setFornitoriList] = useState<Array<{ nome: string; codice: string }>>([{ nome: '', codice: '' }]);
+  const [openSupplierDropdownIndex, setOpenSupplierDropdownIndex] = useState<number | null>(null);
+  const [confirmDeleteSupplierIndex, setConfirmDeleteSupplierIndex] = useState<number | null>(null);
 
   const categories = useMemo(() => Array.from(new Set(ingredients.map(i => i.category))).filter(Boolean), [ingredients]);
   const allCategories = [null, ...categories];
@@ -56,9 +62,76 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     setConfirmDeleteId(null);
   };
 
+  // Carica dati fornitori quando si modifica un ingrediente (con retrocompatibilità)
+  useEffect(() => {
+    if (editingId && form && form.id === editingId) {
+      // Se ha fornitori_associati (nuovo formato)
+      if (form.fornitori_associati && form.fornitori_associati.length > 0) {
+        setFornitoriList(form.fornitori_associati);
+      } 
+      // Retrocompatibilità: se ha solo supplierId, usa il nome del fornitore
+      else if (form.supplierId) {
+        const supplier = suppliers.find(s => s.id === form.supplierId);
+        if (supplier) {
+          setFornitoriList([{ nome: supplier.name, codice: '' }]);
+        } else {
+          setFornitoriList([{ nome: '', codice: '' }]);
+        }
+      }
+      // Retrocompatibilità: se ha nomi_fornitori come array di stringhe (vecchio formato)
+      else if (form.nomi_fornitori && Array.isArray(form.nomi_fornitori) && form.nomi_fornitori.length > 0) {
+        setFornitoriList(form.nomi_fornitori.map(nome => ({ nome, codice: '' })));
+      }
+      else {
+        setFornitoriList([{ nome: '', codice: '' }]);
+      }
+    } else if (isAdding && !editingId) {
+      // Reset quando si apre per aggiungere nuovo ingrediente
+      setFornitoriList([{ nome: '', codice: '' }]);
+    } else if (!editingId && !isAdding) {
+      // Reset quando si chiude
+      setFornitoriList([{ nome: '', codice: '' }]);
+    }
+  }, [editingId, form?.id, form?.fornitori_associati, form?.supplierId, form?.nomi_fornitori, suppliers, isAdding]);
+
   const handleSave = () => {
     if (!form.name || !form.category || form.pricePerUnit === undefined) return;
-    const payload = { ...form, name: normalizeText(form.name), id: editingId || '' } as Ingredient;
+    
+    // Filtra righe vuote e prepara i dati fornitori
+    const fornitoriValidi = fornitoriList.filter(f => f.nome.trim() !== '');
+    
+    // Costruisci i campi per il database
+    const fornitori_associati = fornitoriValidi.map(f => ({
+      nome: normalizeText(f.nome.trim()),
+      codice: f.codice.trim()
+    }));
+    
+    const search_codici = fornitoriValidi
+      .map(f => f.codice.trim())
+      .filter(codice => codice !== '');
+    
+    const nomi_fornitori = fornitoriValidi
+      .map(f => normalizeText(f.nome.trim()).toLowerCase())
+      .filter(nome => nome !== '');
+    
+    // Costruisci il payload
+    const payload: Ingredient = {
+      ...form,
+      name: normalizeText(form.name),
+      id: editingId || '',
+      // Rimuovi supplierId dal payload se abbiamo fornitori_associati
+      ...(fornitori_associati.length > 0 ? {
+        fornitori_associati,
+        search_codici: search_codici.length > 0 ? search_codici : undefined,
+        nomi_fornitori: nomi_fornitori.length > 0 ? nomi_fornitori : undefined,
+        supplierId: undefined // Rimuovi supplierId vecchio
+      } : {
+        fornitori_associati: undefined,
+        search_codici: undefined,
+        nomi_fornitori: undefined
+      })
+    };
+    
     if (editingId) onUpdate(payload);
     else onAdd(payload);
     handleClose();
@@ -70,6 +143,7 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
     setForm({ name: '', unit: 'kg', pricePerUnit: 0, category: '', supplierId: '' });
     setIsAddingNewCategory(false);
     setIsAddingNewSupplier(false);
+    setFornitoriList([{ nome: '', codice: '' }]);
   };
 
   const handleAddQuickSupplier = async () => {
@@ -341,23 +415,106 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
             </div>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-3">
             <div className="flex justify-between items-center px-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Fornitore Associato</label>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Fornitori Associati</label>
               <button onClick={() => setIsAddingNewSupplier(true)} className="text-blue-500 text-[10px] font-black uppercase flex items-center space-x-1">
                 <PlusCircle size={12}/> <span>Nuovo Fornitore</span>
               </button>
             </div>
-            <select 
-              className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold appearance-none" 
-              value={form.supplierId || ''} 
-              onChange={e => setForm({...form, supplierId: e.target.value})}
-            >
-              <option value="">Nessun Fornitore</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            
+            <div className="space-y-3">
+              {fornitoriList.map((fornitore, index) => {
+                const filteredSuppliers = fornitore.nome.length > 0 
+                  ? suppliers.filter(s => s.name.toLowerCase().includes(fornitore.nome.toLowerCase()))
+                  : suppliers; // Mostra tutti i fornitori se non c'è testo
+                const showDropdown = openSupplierDropdownIndex === index && filteredSuppliers.length > 0;
+                
+                return (
+                <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                  <div className="space-y-1 relative">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Nome Fornitore</label>
+                    <input
+                      placeholder="Es: Metro"
+                      className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+                      value={fornitore.nome}
+                      onChange={e => {
+                        const newList = [...fornitoriList];
+                        newList[index].nome = e.target.value;
+                        setFornitoriList(newList);
+                        setOpenSupplierDropdownIndex(index);
+                      }}
+                      onFocus={() => {
+                        setOpenSupplierDropdownIndex(index);
+                      }}
+                      onBlur={() => {
+                        // Delay per permettere il click sul dropdown
+                        setTimeout(() => {
+                          const newList = [...fornitoriList];
+                          newList[index].nome = normalizeText(newList[index].nome);
+                          setFornitoriList(newList);
+                          setOpenSupplierDropdownIndex(null);
+                        }, 200);
+                      }}
+                    />
+                    {showDropdown && (
+                      <div className="absolute z-50 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-60 overflow-y-auto">
+                        <div className="py-2">
+                          {filteredSuppliers.map(supplier => (
+                            <button
+                              key={supplier.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault(); // Previene onBlur
+                                const newList = [...fornitoriList];
+                                newList[index].nome = supplier.name;
+                                setFornitoriList(newList);
+                                setOpenSupplierDropdownIndex(null);
+                              }}
+                              className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
+                            >
+                              <div className="font-bold text-sm text-black">{supplier.name}</div>
+                              {supplier.phone && (
+                                <div className="text-xs text-gray-400 mt-1">{supplier.phone}</div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Codice Articolo / SKU</label>
+                    <input
+                      placeholder="Es: 123456"
+                      className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm font-bold"
+                      value={fornitore.codice}
+                      onChange={e => {
+                        const newList = [...fornitoriList];
+                        newList[index].codice = e.target.value;
+                        setFornitoriList(newList);
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setConfirmDeleteSupplierIndex(index)}
+                    className="bg-gray-100 text-gray-400 p-4 rounded-2xl active:scale-95 transition-transform mb-0.5"
+                    disabled={fornitoriList.length === 1 && fornitoriList[0].nome === '' && fornitoriList[0].codice === ''}
+                  >
+                    <MinusCircle size={16} />
+                  </button>
+                </div>
+                );
+              })}
+              
+              <button
+                onClick={() => setFornitoriList([...fornitoriList, { nome: '', codice: '' }])}
+                className="w-full bg-blue-50 text-blue-500 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center space-x-2 border border-blue-100 active:scale-95 transition-transform"
+              >
+                <Plus size={14} />
+                <span>Aggiungi Fornitore</span>
+              </button>
+            </div>
           </div>
 
           {/* Visualizzazione Prezzo Live */}
@@ -504,6 +661,29 @@ const EconomatoView: React.FC<EconomatoViewProps> = ({ ingredients, suppliers, o
       {csvImportMode && renderCSVImportDialogs()}
       {/* Modale Form */}
       {(isAdding || editingId) && renderForm()}
+
+      {/* Conferma eliminazione fornitore dalla lista */}
+      {confirmDeleteSupplierIndex !== null && (
+        <ConfirmationModal
+          isOpen={true}
+          title="Conferma Eliminazione"
+          message="Sei sicuro di voler rimuovere questo fornitore dalla lista?"
+          confirmText="Elimina"
+          cancelText="Annulla"
+          variant="danger"
+          onConfirm={() => {
+            if (confirmDeleteSupplierIndex !== null) {
+              if (fornitoriList.length > 1) {
+                setFornitoriList(fornitoriList.filter((_, i) => i !== confirmDeleteSupplierIndex));
+              } else {
+                setFornitoriList([{ nome: '', codice: '' }]);
+              }
+            }
+            setConfirmDeleteSupplierIndex(null);
+          }}
+          onCancel={() => setConfirmDeleteSupplierIndex(null)}
+        />
+      )}
 
       {/* Conferma eliminazione iOS Style */}
       {confirmDeleteId && (
